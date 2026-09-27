@@ -14,7 +14,7 @@ purchasesRouter.use(authenticate);
 
 const purchaseInclude = {
   supplier: { select: { id: true, name: true } },
-  branch: { select: { id: true, name: true } },
+  branch: { select: { id: true, name: true, gstin: true, address: true, contactNumber: true } },
   items: { include: { product: { select: { id: true, name: true, sku: true } }, batch: { select: { id: true, batchNumber: true } } } },
   payments: true,
 } as const;

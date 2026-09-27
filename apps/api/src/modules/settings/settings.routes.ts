@@ -8,6 +8,21 @@ import { updateBusinessProfileSchema, updateSettingSchema } from "./settings.val
 export const settingsRouter = Router();
 settingsRouter.use(authenticate);
 
+// Read-only branding info needed to render printable invoices/labels. Deliberately open to any
+// authenticated user (no settings.view check) — a cashier printing a receipt shouldn't need
+// settings access just to show the business name/GSTIN in the header.
+settingsRouter.get("/branding", async (req, res, next) => {
+  try {
+    const tenant = await prisma.tenant.findUniqueOrThrow({
+      where: { id: req.user!.tenantId },
+      select: { businessName: true, legalName: true, gstin: true, address: true, city: true, state: true, pincode: true, invoiceFooter: true, termsAndConditions: true, logoUrl: true },
+    });
+    res.json({ data: tenant });
+  } catch (err) {
+    next(err);
+  }
+});
+
 settingsRouter.get("/business", requirePermission("settings", "view"), async (req, res, next) => {
   try {
     const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: req.user!.tenantId } });

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { isAxiosError } from "axios";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -90,6 +91,11 @@ export function SalesPage() {
                 <td>{paymentBadge(s.paymentStatus)}</td>
                 <td>{statusBadge(s.status)}</td>
                 <td className="text-end">
+                  {hasPermission("sales", "print") && (
+                    <Link to={`/sales/${s.id}/print`} className="btn btn-sm btn-outline-secondary me-1">
+                      Print
+                    </Link>
+                  )}
                   {s.status === "CONFIRMED" && hasPermission("sales", "cancel") && (
                     cancellingId === s.id ? (
                       <div className="d-flex gap-1 justify-content-end">
