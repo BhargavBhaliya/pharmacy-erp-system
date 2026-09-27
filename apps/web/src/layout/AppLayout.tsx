@@ -28,6 +28,7 @@ const NAV_ITEMS = [
   { to: "/users", label: "Users" },
   { to: "/roles", label: "Roles" },
   { to: "/audit-logs", label: "Audit Logs" },
+  { to: "/settings", label: "Settings" },
 ];
 
 export function AppLayout() {

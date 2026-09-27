@@ -29,6 +29,7 @@ import { PaymentsPage } from "./pages/PaymentsPage";
 import { CashSessionsPage } from "./pages/CashSessionsPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { BarcodeLabelsPage } from "./pages/BarcodeLabelsPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 export function App() {
   return (
@@ -216,6 +217,14 @@ export function App() {
                 element={
                   <RequirePermission module="products" action="view">
                     <BarcodeLabelsPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <RequirePermission module="settings" action="view">
+                    <SettingsPage />
                   </RequirePermission>
                 }
               />
