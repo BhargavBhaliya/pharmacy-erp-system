@@ -65,6 +65,11 @@ model Tenant {
   sales             Sale[]
   salePayments      SalePayment[]
   salesReturns      SalesReturn[]
+  expenseCategories ExpenseCategory[]
+  expenses          Expense[]
+  receipts          Receipt[]
+  supplierPayments  SupplierPayment[]
+  cashSessions      CashSession[]
 
   @@map("tenants")
 }
@@ -104,6 +109,10 @@ model Branch {
   prescriptions     Prescription[]
   sales             Sale[]
   salesReturns      SalesReturn[]
+  expenses          Expense[]
+  receipts          Receipt[]
+  supplierPayments  SupplierPayment[]
+  cashSessions      CashSession[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -137,8 +146,9 @@ model Counter {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  sales  Sale[]
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  sales        Sale[]
+  cashSessions CashSession[]
 
   @@unique([branchId, name])
   @@index([tenantId])
@@ -377,11 +387,12 @@ model Supplier {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  batches         Batch[]
-  purchaseOrders  PurchaseOrder[]
-  purchases       Purchase[]
-  purchaseReturns PurchaseReturn[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  batches          Batch[]
+  purchaseOrders   PurchaseOrder[]
+  purchases        Purchase[]
+  purchaseReturns  PurchaseReturn[]
+  supplierPayments SupplierPayment[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -702,13 +713,14 @@ model Purchase {
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
-  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch        Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  supplier      Supplier          @relation(fields: [supplierId], references: [id])
-  purchaseOrder PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id])
-  items         PurchaseItem[]
-  payments      PurchasePayment[]
-  returns       PurchaseReturn[]
+  tenant                     Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch                     Branch                      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  supplier                   Supplier                    @relation(fields: [supplierId], references: [id])
+  purchaseOrder              PurchaseOrder?              @relation(fields: [purchaseOrderId], references: [id])
+  items                      PurchaseItem[]
+  payments                   PurchasePayment[]
+  returns                    PurchaseReturn[]
+  supplierPaymentAllocations SupplierPaymentAllocation[]
 
   @@unique([tenantId, referenceNumber])
   @@index([tenantId, branchId])
@@ -851,6 +863,7 @@ model Customer {
   prescriptions Prescription[]
   sales         Sale[]
   salesReturns  SalesReturn[]
+  receipts      Receipt[]
 
   @@index([tenantId])
   @@index([tenantId, mobile])
@@ -935,15 +948,16 @@ model Sale {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  counter      Counter?      @relation(fields: [counterId], references: [id], onDelete: SetNull)
-  customer     Customer?     @relation(fields: [customerId], references: [id])
-  doctor       Doctor?       @relation(fields: [doctorId], references: [id], onDelete: SetNull)
-  prescription Prescription? @relation(fields: [prescriptionId], references: [id], onDelete: SetNull)
-  items        SaleItem[]
-  payments     SalePayment[]
-  returns      SalesReturn[]
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch             Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  counter            Counter?            @relation(fields: [counterId], references: [id], onDelete: SetNull)
+  customer           Customer?           @relation(fields: [customerId], references: [id])
+  doctor             Doctor?             @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  prescription       Prescription?       @relation(fields: [prescriptionId], references: [id], onDelete: SetNull)
+  items              SaleItem[]
+  payments           SalePayment[]
+  returns            SalesReturn[]
+  receiptAllocations ReceiptAllocation[]
 
   @@unique([tenantId, invoiceNumber])
   @@index([tenantId, branchId])
@@ -1043,6 +1057,158 @@ model SalesReturnItem {
 
   @@index([salesReturnId])
   @@map("sales_return_items")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5: expenses, customer receipts, supplier payments, cash sessions
+// ---------------------------------------------------------------------------
+
+model ExpenseCategory {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("expense_categories")
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Expense {
+  id           String        @id @default(cuid())
+  tenantId     String
+  branchId     String
+  categoryId   String
+  amount       Decimal       @db.Decimal(12, 2)
+  paymentMode  PaymentMode
+  expenseDate  DateTime      @default(now())
+  description  String?
+  receiptUrl   String?
+  status       ExpenseStatus @default(PENDING)
+  approvedById String?
+  createdById  String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch   Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  category ExpenseCategory @relation(fields: [categoryId], references: [id])
+
+  @@index([tenantId, branchId])
+  @@map("expenses")
+}
+
+// A single customer payment that may pay off several outstanding invoices at once (oldest
+// first). Each allocation also creates a matching SalePayment row so that invoice's own
+// paidAmount/paymentStatus stay authoritative — this table is the printable receipt header.
+model Receipt {
+  id              String      @id @default(cuid())
+  tenantId        String
+  branchId        String
+  customerId      String
+  amount          Decimal     @db.Decimal(12, 2)
+  paymentMode     PaymentMode
+  receiptDate     DateTime    @default(now())
+  referenceNumber String?
+  notes           String?
+  createdById     String?
+  createdAt       DateTime    @default(now())
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer    Customer            @relation(fields: [customerId], references: [id])
+  allocations ReceiptAllocation[]
+
+  @@index([tenantId, branchId])
+  @@map("receipts")
+}
+
+model ReceiptAllocation {
+  id        String  @id @default(cuid())
+  receiptId String
+  saleId    String
+  amount    Decimal @db.Decimal(12, 2)
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([receiptId])
+  @@map("receipt_allocations")
+}
+
+// Mirror of Receipt, but for paying suppliers (also FIFO across their oldest unpaid purchases).
+model SupplierPayment {
+  id              String      @id @default(cuid())
+  tenantId        String
+  branchId        String
+  supplierId      String
+  amount          Decimal     @db.Decimal(12, 2)
+  paymentMode     PaymentMode
+  paymentDate     DateTime    @default(now())
+  referenceNumber String?
+  notes           String?
+  createdById     String?
+  createdAt       DateTime    @default(now())
+
+  tenant      Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      Branch                      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  supplier    Supplier                    @relation(fields: [supplierId], references: [id])
+  allocations SupplierPaymentAllocation[]
+
+  @@index([tenantId, branchId])
+  @@map("supplier_payments")
+}
+
+model SupplierPaymentAllocation {
+  id                String  @id @default(cuid())
+  supplierPaymentId String
+  purchaseId        String
+  amount            Decimal @db.Decimal(12, 2)
+
+  supplierPayment SupplierPayment @relation(fields: [supplierPaymentId], references: [id], onDelete: Cascade)
+  purchase        Purchase        @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([supplierPaymentId])
+  @@map("supplier_payment_allocations")
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+model CashSession {
+  id                    String            @id @default(cuid())
+  tenantId              String
+  branchId              String
+  counterId             String
+  openedById            String
+  openingAmount         Decimal           @db.Decimal(12, 2)
+  openedAt              DateTime          @default(now())
+  closedById            String?
+  closingAmount         Decimal?          @db.Decimal(12, 2)
+  expectedClosingAmount Decimal?          @db.Decimal(12, 2)
+  variance              Decimal?          @db.Decimal(12, 2)
+  closedAt              DateTime?
+  status                CashSessionStatus @default(OPEN)
+  notes                 String?
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  counter Counter @relation(fields: [counterId], references: [id])
+
+  @@index([tenantId, branchId])
+  @@map("cash_sessions")
 }
 
 model StockTransferItem {

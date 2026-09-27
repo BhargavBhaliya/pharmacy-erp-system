@@ -24,6 +24,9 @@ import { PrescriptionsPage } from "./pages/PrescriptionsPage";
 import { POSPage } from "./pages/POSPage";
 import { SalesPage } from "./pages/SalesPage";
 import { SalesReturnsPage } from "./pages/SalesReturnsPage";
+import { ExpensesPage } from "./pages/ExpensesPage";
+import { PaymentsPage } from "./pages/PaymentsPage";
+import { CashSessionsPage } from "./pages/CashSessionsPage";
 
 export function App() {
   return (
@@ -188,6 +191,16 @@ export function App() {
                   </RequirePermission>
                 }
               />
+              <Route
+                path="/expenses"
+                element={
+                  <RequirePermission module="expenses" action="view">
+                    <ExpensesPage />
+                  </RequirePermission>
+                }
+              />
+              <Route path="/payments" element={<PaymentsPage />} />
+              <Route path="/cash-sessions" element={<CashSessionsPage />} />
             </Route>
           </Route>
         </Routes>

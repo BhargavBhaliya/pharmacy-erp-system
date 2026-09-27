@@ -24,6 +24,11 @@ import { customersRouter } from "./modules/customers/customers.routes";
 import { prescriptionsRouter } from "./modules/prescriptions/prescriptions.routes";
 import { salesRouter } from "./modules/sales/sales.routes";
 import { salesReturnRouter } from "./modules/sales-return/sales-return.routes";
+import { expenseCategoriesRouter, expensesRouter } from "./modules/expenses/expenses.routes";
+import { receiptsRouter } from "./modules/receipts/receipts.routes";
+import { supplierPaymentsRouter } from "./modules/supplier-payments/supplier-payments.routes";
+import { cashSessionsRouter } from "./modules/cash-sessions/cash-sessions.routes";
+import { countersRouter } from "./modules/counters/counters.routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 export const app = express();
@@ -60,6 +65,12 @@ app.use("/api/customers", customersRouter);
 app.use("/api/prescriptions", prescriptionsRouter);
 app.use("/api/sales", salesRouter);
 app.use("/api/sales-returns", salesReturnRouter);
+app.use("/api/expense-categories", expenseCategoriesRouter);
+app.use("/api/expenses", expensesRouter);
+app.use("/api/receipts", receiptsRouter);
+app.use("/api/supplier-payments", supplierPaymentsRouter);
+app.use("/api/cash-sessions", cashSessionsRouter);
+app.use("/api/counters", countersRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
