@@ -32,6 +32,48 @@ export async function findAvailableBatchesFefo(
   });
 }
 
+export interface FefoAllocation {
+  batchId: string;
+  batchNumber: string;
+  mrp: number;
+  gstRatePercent: number;
+  quantity: number;
+}
+
+// Splits a requested quantity across the FEFO-ordered batches needed to cover it (a sale often
+// spans more than one batch as the soonest-expiring one runs out). Throws if total available
+// stock is insufficient — spec 55.1 ("sale cannot exceed available stock").
+export async function allocateFefoQuantity(
+  db: Db,
+  params: { tenantId: string; branchId: string; productId: string; quantity: number }
+): Promise<FefoAllocation[]> {
+  const batches = await findAvailableBatchesFefo(db, params);
+  const allocations: FefoAllocation[] = [];
+  let remaining = params.quantity;
+
+  for (const batch of batches) {
+    if (remaining <= 0) break;
+    const take = Math.min(batch.quantity, remaining);
+    allocations.push({
+      batchId: batch.id,
+      batchNumber: batch.batchNumber,
+      mrp: Number(batch.mrp),
+      gstRatePercent: Number(batch.gstRatePercent),
+      quantity: take,
+    });
+    remaining -= take;
+  }
+
+  if (remaining > 0) {
+    const totalAvailable = params.quantity - remaining;
+    throw new ValidationError(
+      `Insufficient stock: requested ${params.quantity}, only ${totalAvailable} available across non-expired batches`
+    );
+  }
+
+  return allocations;
+}
+
 interface AdjustStockParams {
   tenantId: string;
   branchId: string;

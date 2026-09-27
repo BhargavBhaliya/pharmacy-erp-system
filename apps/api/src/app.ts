@@ -19,6 +19,11 @@ import { stockTransferRouter } from "./modules/stock-transfer/stock-transfer.rou
 import { purchaseOrdersRouter } from "./modules/purchase/purchase-orders.routes";
 import { purchasesRouter } from "./modules/purchase/purchases.routes";
 import { purchaseReturnsRouter } from "./modules/purchase/purchase-returns.routes";
+import { doctorsRouter } from "./modules/doctors/doctors.routes";
+import { customersRouter } from "./modules/customers/customers.routes";
+import { prescriptionsRouter } from "./modules/prescriptions/prescriptions.routes";
+import { salesRouter } from "./modules/sales/sales.routes";
+import { salesReturnRouter } from "./modules/sales-return/sales-return.routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 export const app = express();
@@ -50,6 +55,11 @@ app.use("/api/stock-transfers", stockTransferRouter);
 app.use("/api/purchase-orders", purchaseOrdersRouter);
 app.use("/api/purchases", purchasesRouter);
 app.use("/api/purchase-returns", purchaseReturnsRouter);
+app.use("/api/doctors", doctorsRouter);
+app.use("/api/customers", customersRouter);
+app.use("/api/prescriptions", prescriptionsRouter);
+app.use("/api/sales", salesRouter);
+app.use("/api/sales-returns", salesReturnRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

@@ -11,6 +11,7 @@ declare global {
         name: string;
         branchIds: string[];
         permissionCodes: Set<string>;
+        discountLimitPercent: number;
       };
     }
   }

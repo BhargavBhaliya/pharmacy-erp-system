@@ -49,6 +49,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       name: user.name,
       branchIds,
       permissionCodes,
+      discountLimitPercent: Number(user.role.discountLimitPercent),
     };
 
     next();
