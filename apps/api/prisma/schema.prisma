@@ -1,0 +1,266 @@
+// Phase 1 schema: tenants, branches, org structure, auth, RBAC, audit, settings.
+// Later phases (products, inventory, purchase, sales, accounting...) extend this same file.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy & org structure
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id                     String   @id @default(cuid())
+  businessName           String
+  legalName              String?
+  ownerName              String?
+  email                  String?
+  phone                  String?
+  website                String?
+  gstin                  String?
+  pan                    String?
+  drugLicenseNumber      String?
+  fssaiLicenseNumber     String?
+  address                String?
+  state                  String?
+  district               String?
+  city                   String?
+  pincode                String?
+  logoUrl                String?
+  signatureUrl           String?
+  invoiceFooter          String?
+  termsAndConditions     String?
+  // Indian FY defaults to April(4)-March; kept configurable per spec section 46.
+  financialYearStartMonth Int     @default(4)
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  branches    Branch[]
+  users       User[]
+  roles       Role[]
+  auditLogs   AuditLog[]
+  settings    Setting[]
+
+  @@map("tenants")
+}
+
+model Branch {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  name               String
+  address            String?
+  gstin              String?
+  drugLicenseNumber  String?
+  pharmacyLicenseNumber String?
+  contactNumber      String?
+  email              String?
+  invoicePrefix      String?
+  bankName           String?
+  bankAccountNumber  String?
+  bankIfsc           String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  warehouses  Warehouse[]
+  counters    Counter[]
+  userBranches UserBranch[]
+  auditLogs   AuditLog[]
+  settings    Setting[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("branches")
+}
+
+model Warehouse {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String
+  name      String
+  location  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, name])
+  @@index([tenantId])
+  @@map("warehouses")
+}
+
+model Counter {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, name])
+  @@index([tenantId])
+  @@map("counters")
+}
+
+// ---------------------------------------------------------------------------
+// Auth & RBAC
+// ---------------------------------------------------------------------------
+
+model User {
+  id                String    @id @default(cuid())
+  tenantId          String
+  name              String
+  email             String
+  phone             String?
+  passwordHash      String
+  roleId            String
+  isActive          Boolean   @default(true)
+  mustChangePassword Boolean  @default(false)
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role          Role          @relation(fields: [roleId], references: [id])
+  userBranches  UserBranch[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  // Email is globally unique (not just per tenant) so login can look a user up by email
+  // alone before knowing which tenant they belong to.
+  @@unique([email])
+  @@index([tenantId])
+  @@index([roleId])
+  @@map("users")
+}
+
+// Which branches a user may operate in. Empty = no branch access (must be assigned explicitly).
+model UserBranch {
+  id       String @id @default(cuid())
+  userId   String
+  branchId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId])
+  @@map("user_branches")
+}
+
+model Role {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  name                String
+  // Default/system roles seeded per tenant can't be deleted, only permission-edited.
+  isSystem            Boolean  @default(false)
+  discountLimitPercent Decimal @default(0) @db.Decimal(5, 2)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+// Global catalog of (module, action) pairs — seeded once, shared across all tenants.
+model Permission {
+  id     String @id @default(cuid())
+  module String
+  action String
+  code   String @unique // e.g. "products.edit"
+
+  rolePermissions RolePermission[]
+
+  @@unique([module, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String @id @default(cuid())
+  roleId       String
+  permissionId String
+  allowed      Boolean @default(true)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Cross-cutting: audit log & settings
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String?
+  branchId   String?
+  module     String
+  action     String
+  entityType String?
+  entityId   String?
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+// Tenant-wide setting when branchId is null, branch-specific override otherwise.
+model Setting {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String?
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, branchId, key])
+  @@map("settings")
+}

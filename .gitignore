@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+.DS_Store
+Thumbs.db
+generated/
+
+# Local dev-only Postgres data directory (see SETUP.md) — never commit database files.
+.pgdata/
+*.log

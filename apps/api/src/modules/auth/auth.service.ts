@@ -1,0 +1,126 @@
+import { prisma } from "../../lib/prisma";
+import { hashPassword, verifyPassword } from "../../lib/password";
+import {
+  generateRefreshToken,
+  hashRefreshToken,
+  refreshTokenExpiryDate,
+  signAccessToken,
+} from "../../lib/jwt";
+import { seedDefaultRolesForTenant } from "../../lib/tenantSetup";
+import { ConflictError, UnauthorizedError } from "../../lib/errors";
+import type { LoginInput, RegisterBusinessInput } from "./auth.validation";
+
+export async function registerBusiness(input: RegisterBusinessInput) {
+  const existing = await prisma.user.findUnique({ where: { email: input.email } });
+  if (existing) throw new ConflictError("An account with this email already exists");
+
+  const passwordHash = await hashPassword(input.password);
+
+  return prisma.$transaction(async (tx) => {
+    const tenant = await tx.tenant.create({
+      data: { businessName: input.businessName, ownerName: input.ownerName, email: input.email },
+    });
+
+    // Default branch/warehouse/counter so the tenant is immediately usable.
+    const branch = await tx.branch.create({
+      data: { tenantId: tenant.id, name: "Main Branch", invoicePrefix: "INV" },
+    });
+    await tx.warehouse.create({ data: { tenantId: tenant.id, branchId: branch.id, name: "Main Warehouse" } });
+    await tx.counter.create({ data: { tenantId: tenant.id, branchId: branch.id, name: "Counter 1" } });
+
+    // Must run on `tx`, not the shared client: the tenant row isn't committed yet, so a
+    // separate connection can't see it and role creation would fail its FK constraint.
+    const roleIdByName = await seedDefaultRolesForTenant(tenant.id, tx);
+    const superAdminRoleId = roleIdByName.get("Super Admin")!;
+
+    const user = await tx.user.create({
+      data: {
+        tenantId: tenant.id,
+        name: input.ownerName,
+        email: input.email,
+        phone: input.phone,
+        passwordHash,
+        roleId: superAdminRoleId,
+      },
+    });
+
+    return { tenant, branch, user };
+  });
+}
+
+export async function login(input: LoginInput, meta: { ipAddress?: string; userAgent?: string }) {
+  const user = await prisma.user.findUnique({
+    where: { email: input.email },
+    include: { role: true },
+  });
+
+  if (!user || user.deletedAt || !user.isActive) {
+    throw new UnauthorizedError("Invalid email or password");
+  }
+
+  const validPassword = await verifyPassword(input.password, user.passwordHash);
+  if (!validPassword) throw new UnauthorizedError("Invalid email or password");
+
+  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+
+  const accessToken = signAccessToken({ sub: user.id, tenantId: user.tenantId, roleId: user.roleId });
+  const refreshToken = generateRefreshToken();
+  await prisma.refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashRefreshToken(refreshToken),
+      expiresAt: refreshTokenExpiryDate(),
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+    },
+  });
+
+  return {
+    accessToken,
+    refreshToken,
+    user: { id: user.id, name: user.name, email: user.email, roleName: user.role.name, tenantId: user.tenantId },
+  };
+}
+
+export async function refresh(rawToken: string, meta: { ipAddress?: string; userAgent?: string }) {
+  const tokenHash = hashRefreshToken(rawToken);
+  const stored = await prisma.refreshToken.findUnique({
+    where: { tokenHash },
+    include: { user: true },
+  });
+
+  if (!stored || stored.revokedAt || stored.expiresAt < new Date() || !stored.user.isActive || stored.user.deletedAt) {
+    throw new UnauthorizedError("Invalid or expired refresh token");
+  }
+
+  // Rotate: revoke the old token and issue a new one, so a leaked refresh token can only be
+  // replayed once before the legitimate user's next refresh invalidates it.
+  const newRefreshToken = generateRefreshToken();
+  await prisma.$transaction([
+    prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } }),
+    prisma.refreshToken.create({
+      data: {
+        userId: stored.userId,
+        tokenHash: hashRefreshToken(newRefreshToken),
+        expiresAt: refreshTokenExpiryDate(),
+        ipAddress: meta.ipAddress,
+        userAgent: meta.userAgent,
+      },
+    }),
+  ]);
+
+  const accessToken = signAccessToken({
+    sub: stored.user.id,
+    tenantId: stored.user.tenantId,
+    roleId: stored.user.roleId,
+  });
+
+  return { accessToken, refreshToken: newRefreshToken };
+}
+
+export async function logout(rawToken: string): Promise<void> {
+  const tokenHash = hashRefreshToken(rawToken);
+  await prisma.refreshToken
+    .updateMany({ where: { tokenHash, revokedAt: null }, data: { revokedAt: new Date() } })
+    .catch(() => undefined);
+}
