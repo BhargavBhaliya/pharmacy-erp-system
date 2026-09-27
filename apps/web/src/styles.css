@@ -1,0 +1,9 @@
+@media print {
+  .no-print,
+  nav {
+    display: none !important;
+  }
+  main {
+    overflow: visible !important;
+  }
+}

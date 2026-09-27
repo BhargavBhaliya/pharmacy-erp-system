@@ -73,7 +73,7 @@ export function ReportsPage() {
 
   return (
     <div>
-      <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+      <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2 no-print">
         <h3 className="mb-0">Reports</h3>
         <div className="d-flex gap-2">
           <button className="btn btn-outline-secondary" onClick={exportCsv}>
@@ -85,7 +85,7 @@ export function ReportsPage() {
         </div>
       </div>
 
-      <div className="d-flex gap-2 mb-3 flex-wrap">
+      <div className="d-flex gap-2 mb-3 flex-wrap no-print">
         <select className="form-select" style={{ width: 260 }} value={reportKey} onChange={(e) => setReportKey(e.target.value as typeof reportKey)}>
           {REPORT_TYPES.map((r) => (
             <option key={r.key} value={r.key}>

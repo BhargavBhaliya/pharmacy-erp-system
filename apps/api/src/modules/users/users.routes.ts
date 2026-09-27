@@ -5,6 +5,7 @@ import { validateBody } from "../../middleware/validate";
 import { hashPassword, verifyPassword } from "../../lib/password";
 import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
+import { notify } from "../../lib/notify";
 import { changePasswordSchema, createUserSchema, updateUserSchema } from "./users.validation";
 
 export const usersRouter = Router();
@@ -62,6 +63,7 @@ usersRouter.post("/", requirePermission("users", "add"), validateBody(createUser
     });
 
     recordAudit({ req, module: "users", action: "create", entityType: "User", entityId: user.id, newValue: { email: user.email, role: role.name } });
+    notify({ tenantId: req.user!.tenantId, type: "user_created", title: "New user added", message: `${user.name} was added as ${role.name}` });
     res.status(201).json({ data: user });
   } catch (err) {
     next(err);

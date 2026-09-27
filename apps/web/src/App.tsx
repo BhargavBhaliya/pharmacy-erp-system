@@ -28,6 +28,7 @@ import { ExpensesPage } from "./pages/ExpensesPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { CashSessionsPage } from "./pages/CashSessionsPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { BarcodeLabelsPage } from "./pages/BarcodeLabelsPage";
 
 export function App() {
   return (
@@ -207,6 +208,14 @@ export function App() {
                 element={
                   <RequirePermission module="reports" action="view">
                     <ReportsPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/barcode-labels"
+                element={
+                  <RequirePermission module="products" action="view">
+                    <BarcodeLabelsPage />
                   </RequirePermission>
                 }
               />

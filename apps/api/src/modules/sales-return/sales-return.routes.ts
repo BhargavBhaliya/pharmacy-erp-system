@@ -4,6 +4,7 @@ import { authenticate, requirePermission } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
 import { ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
+import { notify } from "../../lib/notify";
 import { getNextDocumentNumber } from "../../lib/documentNumber";
 import { adjustStock } from "../../lib/inventory";
 import { createSalesReturnSchema } from "./sales-return.validation";
@@ -124,6 +125,8 @@ salesReturnRouter.post("/", requirePermission("sales_return", "add"), validateBo
 
     if (canAutoApprove) {
       await processApproval(created.id, req.user!.id);
+    } else {
+      notify({ tenantId: req.user!.tenantId, type: "sales_return_pending", title: "Sales return awaiting approval", message: `${created.referenceNumber} for ₹${totalAmount} needs approval`, link: "/sales-returns" });
     }
 
     const full = await prisma.salesReturn.findFirst({ where: { id: created.id }, include: returnInclude });

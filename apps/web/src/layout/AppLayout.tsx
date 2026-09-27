@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { NotificationBell } from "./NotificationBell";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", end: true },
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { to: "/payments", label: "Payments" },
   { to: "/cash-sessions", label: "Cash / Counters" },
   { to: "/reports", label: "Reports" },
+  { to: "/barcode-labels", label: "Barcode Labels" },
   { to: "/branches", label: "Branches" },
   { to: "/users", label: "Users" },
   { to: "/roles", label: "Roles" },
@@ -60,7 +62,10 @@ export function AppLayout() {
         </div>
       </nav>
       <main className="flex-grow-1 overflow-auto bg-light">
-        <div className="container-fluid p-4">
+        <div className="d-flex justify-content-end p-3 pb-0 no-print">
+          <NotificationBell />
+        </div>
+        <div className="container-fluid p-4 pt-2">
           <Outlet />
         </div>
       </main>

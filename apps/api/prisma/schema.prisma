@@ -70,6 +70,7 @@ model Tenant {
   receipts          Receipt[]
   supplierPayments  SupplierPayment[]
   cashSessions      CashSession[]
+  notifications     Notification[]
 
   @@map("tenants")
 }
@@ -179,6 +180,7 @@ model User {
   userBranches  UserBranch[]
   refreshTokens RefreshToken[]
   auditLogs     AuditLog[]
+  notifications Notification[]
 
   // Email is globally unique (not just per tenant) so login can look a user up by email
   // alone before knowing which tenant they belong to.
@@ -1209,6 +1211,30 @@ model CashSession {
 
   @@index([tenantId, branchId])
   @@map("cash_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: in-app notifications
+// ---------------------------------------------------------------------------
+
+// Tenant-wide by default (userId null); visibility is gated by the notifications.view
+// permission on read, not by targeting individual users — simple broadcast model.
+model Notification {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String?
+  type      String
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("notifications")
 }
 
 model StockTransferItem {

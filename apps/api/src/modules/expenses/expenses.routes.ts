@@ -4,6 +4,7 @@ import { authenticate, requirePermission } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
 import { ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
+import { notify } from "../../lib/notify";
 import { createExpenseCategorySchema, createExpenseSchema } from "./expenses.validation";
 
 export const expenseCategoriesRouter = Router();
@@ -74,6 +75,9 @@ expensesRouter.post("/", requirePermission("expenses", "add"), validateBody(crea
     });
 
     recordAudit({ req, module: "expenses", action: "create", entityType: "Expense", entityId: expense.id, newValue: { amount: expense.amount, status: expense.status }, branchId: expense.branchId });
+    if (!canAutoApprove) {
+      notify({ tenantId: req.user!.tenantId, type: "expense_pending", title: "Expense awaiting approval", message: `₹${expense.amount} (${category.name}) needs approval`, link: "/expenses" });
+    }
     res.status(201).json({ data: expense });
   } catch (err) {
     next(err);

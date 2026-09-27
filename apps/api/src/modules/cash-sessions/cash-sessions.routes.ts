@@ -4,7 +4,10 @@ import { authenticate, requirePermission } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
 import { ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
+import { notify } from "../../lib/notify";
 import { closeCashSessionSchema, openCashSessionSchema } from "./cash-sessions.validation";
+
+const CASH_MISMATCH_THRESHOLD = 50;
 
 export const cashSessionsRouter = Router();
 cashSessionsRouter.use(authenticate);
@@ -94,6 +97,15 @@ cashSessionsRouter.put("/:id/close", requirePermission("pos", "add"), validateBo
     });
 
     recordAudit({ req, module: "pos", action: "close_cash_session", entityType: "CashSession", entityId: session.id, newValue: { closingAmount: req.body.closingAmount, expectedClosingAmount, variance }, branchId: session.branchId });
+    if (Math.abs(variance) >= CASH_MISMATCH_THRESHOLD) {
+      notify({
+        tenantId: req.user!.tenantId,
+        type: "cash_mismatch",
+        title: "Cash drawer mismatch",
+        message: `${updated.counter.name} closed with a variance of ₹${variance} (expected ₹${expectedClosingAmount.toFixed(2)}, counted ₹${req.body.closingAmount})`,
+        link: "/cash-sessions",
+      });
+    }
     res.json({ data: updated });
   } catch (err) {
     next(err);
