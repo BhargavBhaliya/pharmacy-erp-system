@@ -15,65 +15,77 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model Tenant {
-  id                     String   @id @default(cuid())
-  businessName           String
-  legalName              String?
-  ownerName              String?
-  email                  String?
-  phone                  String?
-  website                String?
-  gstin                  String?
-  pan                    String?
-  drugLicenseNumber      String?
-  fssaiLicenseNumber     String?
-  address                String?
-  state                  String?
-  district               String?
-  city                   String?
-  pincode                String?
-  logoUrl                String?
-  signatureUrl           String?
-  invoiceFooter          String?
-  termsAndConditions     String?
+  id                      String   @id @default(cuid())
+  businessName            String
+  legalName               String?
+  ownerName               String?
+  email                   String?
+  phone                   String?
+  website                 String?
+  gstin                   String?
+  pan                     String?
+  drugLicenseNumber       String?
+  fssaiLicenseNumber      String?
+  address                 String?
+  state                   String?
+  district                String?
+  city                    String?
+  pincode                 String?
+  logoUrl                 String?
+  signatureUrl            String?
+  invoiceFooter           String?
+  termsAndConditions      String?
   // Indian FY defaults to April(4)-March; kept configurable per spec section 46.
-  financialYearStartMonth Int     @default(4)
-  isActive               Boolean  @default(true)
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  financialYearStartMonth Int      @default(4)
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
-  branches    Branch[]
-  users       User[]
-  roles       Role[]
-  auditLogs   AuditLog[]
-  settings    Setting[]
+  branches          Branch[]
+  users             User[]
+  roles             Role[]
+  auditLogs         AuditLog[]
+  settings          Setting[]
+  manufacturers     Manufacturer[]
+  productCategories ProductCategory[]
+  units             Unit[]
+  suppliers         Supplier[]
+  products          Product[]
+  batches           Batch[]
+  stockTransactions StockTransaction[]
+  stockTransfers    StockTransfer[]
 
   @@map("tenants")
 }
 
 model Branch {
-  id                 String   @id @default(cuid())
-  tenantId           String
-  name               String
-  address            String?
-  gstin              String?
-  drugLicenseNumber  String?
+  id                    String   @id @default(cuid())
+  tenantId              String
+  name                  String
+  address               String?
+  gstin                 String?
+  drugLicenseNumber     String?
   pharmacyLicenseNumber String?
-  contactNumber      String?
-  email              String?
-  invoicePrefix      String?
-  bankName           String?
-  bankAccountNumber  String?
-  bankIfsc           String?
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  contactNumber         String?
+  email                 String?
+  invoicePrefix         String?
+  bankName              String?
+  bankAccountNumber     String?
+  bankIfsc              String?
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  warehouses  Warehouse[]
-  counters    Counter[]
-  userBranches UserBranch[]
-  auditLogs   AuditLog[]
-  settings    Setting[]
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  warehouses        Warehouse[]
+  counters          Counter[]
+  userBranches      UserBranch[]
+  auditLogs         AuditLog[]
+  settings          Setting[]
+  batches           Batch[]
+  stockTransactions StockTransaction[]
+  transfersOut      StockTransfer[]    @relation("TransferFrom")
+  transfersIn       StockTransfer[]    @relation("TransferTo")
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -90,7 +102,8 @@ model Warehouse {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  batches Batch[]
 
   @@unique([branchId, name])
   @@index([tenantId])
@@ -118,22 +131,22 @@ model Counter {
 // ---------------------------------------------------------------------------
 
 model User {
-  id                String    @id @default(cuid())
-  tenantId          String
-  name              String
-  email             String
-  phone             String?
-  passwordHash      String
-  roleId            String
-  isActive          Boolean   @default(true)
-  mustChangePassword Boolean  @default(false)
-  lastLoginAt       DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  deletedAt         DateTime?
+  id                 String    @id @default(cuid())
+  tenantId           String
+  name               String
+  email              String
+  phone              String?
+  passwordHash       String
+  roleId             String
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  role          Role          @relation(fields: [roleId], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role          Role           @relation(fields: [roleId], references: [id])
   userBranches  UserBranch[]
   refreshTokens RefreshToken[]
   auditLogs     AuditLog[]
@@ -160,14 +173,14 @@ model UserBranch {
 }
 
 model Role {
-  id                  String   @id @default(cuid())
-  tenantId            String
-  name                String
+  id                   String   @id @default(cuid())
+  tenantId             String
+  name                 String
   // Default/system roles seeded per tenant can't be deleted, only permission-edited.
-  isSystem            Boolean  @default(false)
-  discountLimitPercent Decimal @default(0) @db.Decimal(5, 2)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  isSystem             Boolean  @default(false)
+  discountLimitPercent Decimal  @default(0) @db.Decimal(5, 2)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   users           User[]
@@ -192,7 +205,7 @@ model Permission {
 }
 
 model RolePermission {
-  id           String @id @default(cuid())
+  id           String  @id @default(cuid())
   roleId       String
   permissionId String
   allowed      Boolean @default(true)
@@ -263,4 +276,286 @@ model Setting {
 
   @@unique([tenantId, branchId, key])
   @@map("settings")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: product master, batches, inventory (FEFO), stock transfer
+// ---------------------------------------------------------------------------
+
+model Manufacturer {
+  id            String   @id @default(cuid())
+  tenantId      String
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products Product[]
+  batches  Batch[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("manufacturers")
+}
+
+model ProductCategory {
+  id               String   @id @default(cuid())
+  tenantId         String
+  name             String
+  parentCategoryId String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parentCategory ProductCategory?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: SetNull)
+  subCategories  ProductCategory[] @relation("CategoryHierarchy")
+  products       Product[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("product_categories")
+}
+
+model Unit {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String // e.g. "Strip", "Bottle", "Box", "Tablet", "ml"
+  shortCode String? // e.g. "STR", "BTL"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("product_units")
+}
+
+// Minimal for now (Phase 2 only needs a batch->supplier reference); Phase 3 (Purchase)
+// extends this with credit terms, ledger, etc.
+model Supplier {
+  id             String   @id @default(cuid())
+  tenantId       String
+  name           String
+  contactPerson  String?
+  phone          String?
+  email          String?
+  address        String?
+  gstin          String?
+  pan            String?
+  drugLicense    String?
+  creditLimit    Decimal  @default(0) @db.Decimal(12, 2)
+  creditDays     Int      @default(0)
+  openingBalance Decimal  @default(0) @db.Decimal(12, 2)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  batches Batch[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("suppliers")
+}
+
+model Product {
+  id                   String   @id @default(cuid())
+  tenantId             String
+  sku                  String
+  name                 String
+  genericName          String?
+  brandName            String?
+  manufacturerId       String?
+  categoryId           String?
+  unitId               String?
+  composition          String?
+  strength             String?
+  dosageForm           String?
+  hsnCode              String?
+  gstRatePercent       Decimal  @default(0) @db.Decimal(5, 2)
+  scheduleType         String?
+  requiresPrescription Boolean  @default(false)
+  isControlled         Boolean  @default(false)
+  isNarcotic           Boolean  @default(false)
+  isRefrigerated       Boolean  @default(false)
+  packSize             String?
+  mrp                  Decimal  @db.Decimal(12, 2)
+  purchasePrice        Decimal  @db.Decimal(12, 2)
+  sellingPrice         Decimal  @db.Decimal(12, 2)
+  wholesalePrice       Decimal? @db.Decimal(12, 2)
+  minSellingPrice      Decimal? @db.Decimal(12, 2)
+  reorderLevel         Int      @default(0)
+  maxStockLevel        Int?
+  rackLocation         String?
+  imageUrl             String?
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  manufacturer      Manufacturer?       @relation(fields: [manufacturerId], references: [id], onDelete: SetNull)
+  category          ProductCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  unit              Unit?               @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  barcodes          ProductBarcode[]
+  batches           Batch[]
+  StockTransaction  StockTransaction[]
+  StockTransferItem StockTransferItem[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([tenantId, name])
+  @@map("products")
+}
+
+model ProductBarcode {
+  id        String @id @default(cuid())
+  productId String
+  barcode   String @unique
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_barcodes")
+}
+
+model Batch {
+  id                   String    @id @default(cuid())
+  tenantId             String
+  branchId             String
+  warehouseId          String?
+  productId            String
+  batchNumber          String
+  manufacturerId       String?
+  supplierId           String?
+  mfgDate              DateTime?
+  expiryDate           DateTime
+  purchaseRate         Decimal   @db.Decimal(12, 2)
+  mrp                  Decimal   @db.Decimal(12, 2)
+  gstRatePercent       Decimal   @default(0) @db.Decimal(5, 2)
+  // Current sellable quantity. The authoritative history of how it got here lives in
+  // StockTransaction; this column is a denormalized running total for fast reads, always
+  // updated inside the same transaction as the StockTransaction row that explains the change.
+  quantity             Int       @default(0)
+  freeQuantityReceived Int       @default(0)
+  isBlocked            Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch            Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  warehouse         Warehouse?          @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  product           Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  manufacturer      Manufacturer?       @relation(fields: [manufacturerId], references: [id], onDelete: SetNull)
+  supplier          Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  stockTransactions StockTransaction[]
+  transferItems     StockTransferItem[]
+
+  @@unique([branchId, productId, batchNumber])
+  @@index([tenantId, branchId])
+  @@index([productId])
+  @@index([expiryDate])
+  @@map("batches")
+}
+
+enum StockTransactionType {
+  OPENING
+  PURCHASE
+  PURCHASE_RETURN
+  SALE
+  SALE_RETURN
+  TRANSFER_OUT
+  TRANSFER_IN
+  ADJUSTMENT
+}
+
+enum AdjustmentReason {
+  DAMAGED
+  EXPIRED
+  LOST
+  FOUND
+  CORRECTION
+  OTHER
+}
+
+// Append-only ledger: every stock change (spec section 55.7). `quantity` is signed
+// (positive = stock in, negative = stock out).
+model StockTransaction {
+  id            String               @id @default(cuid())
+  tenantId      String
+  branchId      String
+  productId     String
+  batchId       String
+  type          StockTransactionType
+  quantity      Int
+  reason        AdjustmentReason?
+  referenceType String?
+  referenceId   String?
+  notes         String?
+  createdById   String?
+  createdAt     DateTime             @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batch   Batch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, branchId, createdAt])
+  @@index([batchId])
+  @@index([productId])
+  @@map("stock_transactions")
+}
+
+enum StockTransferStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  DISPATCHED
+  RECEIVED
+  CANCELLED
+}
+
+model StockTransfer {
+  id            String              @id @default(cuid())
+  tenantId      String
+  fromBranchId  String
+  toBranchId    String
+  status        StockTransferStatus @default(REQUESTED)
+  requestedById String?
+  approvedById  String?
+  notes         String?
+  dispatchedAt  DateTime?
+  receivedAt    DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fromBranch Branch              @relation("TransferFrom", fields: [fromBranchId], references: [id], onDelete: Cascade)
+  toBranch   Branch              @relation("TransferTo", fields: [toBranchId], references: [id], onDelete: Cascade)
+  items      StockTransferItem[]
+
+  @@index([tenantId])
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id         String @id @default(cuid())
+  transferId String
+  productId  String
+  batchId    String
+  quantity   Int
+
+  transfer StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product  Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batch    Batch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([transferId])
+  @@map("stock_transfer_items")
 }

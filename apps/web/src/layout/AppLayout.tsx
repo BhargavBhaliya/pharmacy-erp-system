@@ -3,6 +3,12 @@ import { useAuth } from "../auth/AuthContext";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", end: true },
+  { to: "/products", label: "Products" },
+  { to: "/catalog", label: "Catalog" },
+  { to: "/inventory", label: "Inventory" },
+  { to: "/expiry", label: "Expiry" },
+  { to: "/stock-transfers", label: "Stock Transfers" },
+  { to: "/suppliers", label: "Suppliers" },
   { to: "/branches", label: "Branches" },
   { to: "/users", label: "Users" },
   { to: "/roles", label: "Roles" },
