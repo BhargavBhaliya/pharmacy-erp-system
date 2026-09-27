@@ -16,6 +16,9 @@ import { productsRouter } from "./modules/products/products.routes";
 import { batchesRouter } from "./modules/inventory/batches.routes";
 import { inventoryRouter } from "./modules/inventory/inventory.routes";
 import { stockTransferRouter } from "./modules/stock-transfer/stock-transfer.routes";
+import { purchaseOrdersRouter } from "./modules/purchase/purchase-orders.routes";
+import { purchasesRouter } from "./modules/purchase/purchases.routes";
+import { purchaseReturnsRouter } from "./modules/purchase/purchase-returns.routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 export const app = express();
@@ -44,6 +47,9 @@ app.use("/api/products", productsRouter);
 app.use("/api/batches", batchesRouter);
 app.use("/api/inventory", inventoryRouter);
 app.use("/api/stock-transfers", stockTransferRouter);
+app.use("/api/purchase-orders", purchaseOrdersRouter);
+app.use("/api/purchases", purchasesRouter);
+app.use("/api/purchase-returns", purchaseReturnsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

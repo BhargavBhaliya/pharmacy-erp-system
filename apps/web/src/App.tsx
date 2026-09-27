@@ -15,6 +15,9 @@ import { SuppliersPage } from "./pages/SuppliersPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { ExpiryPage } from "./pages/ExpiryPage";
 import { StockTransfersPage } from "./pages/StockTransfersPage";
+import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
+import { PurchasesPage } from "./pages/PurchasesPage";
+import { PurchaseReturnsPage } from "./pages/PurchaseReturnsPage";
 
 export function App() {
   return (
@@ -104,6 +107,30 @@ export function App() {
                 element={
                   <RequirePermission module="stock_transfer" action="view">
                     <StockTransfersPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/purchase-orders"
+                element={
+                  <RequirePermission module="purchase" action="view">
+                    <PurchaseOrdersPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/purchases"
+                element={
+                  <RequirePermission module="purchase" action="view">
+                    <PurchasesPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/purchase-returns"
+                element={
+                  <RequirePermission module="purchase_return" action="view">
+                    <PurchaseReturnsPage />
                   </RequirePermission>
                 }
               />
