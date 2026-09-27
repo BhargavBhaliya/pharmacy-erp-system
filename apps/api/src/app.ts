@@ -29,6 +29,7 @@ import { receiptsRouter } from "./modules/receipts/receipts.routes";
 import { supplierPaymentsRouter } from "./modules/supplier-payments/supplier-payments.routes";
 import { cashSessionsRouter } from "./modules/cash-sessions/cash-sessions.routes";
 import { countersRouter } from "./modules/counters/counters.routes";
+import { reportsRouter } from "./modules/reports/reports.routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 export const app = express();
@@ -71,6 +72,7 @@ app.use("/api/receipts", receiptsRouter);
 app.use("/api/supplier-payments", supplierPaymentsRouter);
 app.use("/api/cash-sessions", cashSessionsRouter);
 app.use("/api/counters", countersRouter);
+app.use("/api/reports", reportsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

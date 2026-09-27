@@ -27,6 +27,7 @@ import { SalesReturnsPage } from "./pages/SalesReturnsPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { CashSessionsPage } from "./pages/CashSessionsPage";
+import { ReportsPage } from "./pages/ReportsPage";
 
 export function App() {
   return (
@@ -201,6 +202,14 @@ export function App() {
               />
               <Route path="/payments" element={<PaymentsPage />} />
               <Route path="/cash-sessions" element={<CashSessionsPage />} />
+              <Route
+                path="/reports"
+                element={
+                  <RequirePermission module="reports" action="view">
+                    <ReportsPage />
+                  </RequirePermission>
+                }
+              />
             </Route>
           </Route>
         </Routes>

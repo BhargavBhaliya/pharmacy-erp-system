@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { to: "/expenses", label: "Expenses" },
   { to: "/payments", label: "Payments" },
   { to: "/cash-sessions", label: "Cash / Counters" },
+  { to: "/reports", label: "Reports" },
   { to: "/branches", label: "Branches" },
   { to: "/users", label: "Users" },
   { to: "/roles", label: "Roles" },
