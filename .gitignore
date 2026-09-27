@@ -10,6 +10,7 @@ coverage/
 Thumbs.db
 generated/
 
-# Local dev-only Postgres data directory (see SETUP.md) — never commit database files.
+# Local dev-only Postgres data directory (see README.md) — never commit database files.
 .pgdata/
 *.log
+*.tsbuildinfo
