@@ -2,44 +2,45 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { NotificationBell } from "./NotificationBell";
 
-const NAV_ITEMS = [
+const NAV_ITEMS: { to: string; label: string; end?: boolean; module?: string; action?: string }[] = [
   { to: "/", label: "Dashboard", end: true },
-  { to: "/pos", label: "POS Billing" },
-  { to: "/sales", label: "Sales" },
-  { to: "/sales-returns", label: "Sales Returns" },
-  { to: "/customers", label: "Customers" },
-  { to: "/doctors", label: "Doctors" },
-  { to: "/prescriptions", label: "Prescriptions" },
-  { to: "/products", label: "Products" },
-  { to: "/catalog", label: "Catalog" },
-  { to: "/inventory", label: "Inventory" },
-  { to: "/expiry", label: "Expiry" },
-  { to: "/stock-transfers", label: "Stock Transfers" },
-  { to: "/purchase-orders", label: "Purchase Orders" },
-  { to: "/purchases", label: "Purchases" },
-  { to: "/purchase-returns", label: "Purchase Returns" },
-  { to: "/suppliers", label: "Suppliers" },
-  { to: "/expenses", label: "Expenses" },
+  { to: "/pos", label: "POS Billing", module: "pos", action: "add" },
+  { to: "/sales", label: "Sales", module: "sales", action: "view" },
+  { to: "/sales-returns", label: "Sales Returns", module: "sales_return", action: "view" },
+  { to: "/customers", label: "Customers", module: "customers", action: "view" },
+  { to: "/doctors", label: "Doctors", module: "doctors", action: "view" },
+  { to: "/prescriptions", label: "Prescriptions", module: "prescriptions", action: "view" },
+  { to: "/products", label: "Products", module: "products", action: "view" },
+  { to: "/catalog", label: "Catalog", module: "products", action: "view" },
+  { to: "/inventory", label: "Inventory", module: "inventory", action: "view" },
+  { to: "/expiry", label: "Expiry", module: "expiry", action: "view" },
+  { to: "/stock-transfers", label: "Stock Transfers", module: "stock_transfer", action: "view" },
+  { to: "/purchase-orders", label: "Purchase Orders", module: "purchase", action: "view" },
+  { to: "/purchases", label: "Purchases", module: "purchase", action: "view" },
+  { to: "/purchase-returns", label: "Purchase Returns", module: "purchase_return", action: "view" },
+  { to: "/suppliers", label: "Suppliers", module: "suppliers", action: "view" },
+  { to: "/expenses", label: "Expenses", module: "expenses", action: "view" },
   { to: "/payments", label: "Payments" },
   { to: "/cash-sessions", label: "Cash / Counters" },
-  { to: "/reports", label: "Reports" },
-  { to: "/barcode-labels", label: "Barcode Labels" },
-  { to: "/branches", label: "Branches" },
-  { to: "/users", label: "Users" },
-  { to: "/roles", label: "Roles" },
-  { to: "/audit-logs", label: "Audit Logs" },
-  { to: "/settings", label: "Settings" },
+  { to: "/reports", label: "Reports", module: "reports", action: "view" },
+  { to: "/barcode-labels", label: "Barcode Labels", module: "products", action: "view" },
+  { to: "/branches", label: "Branches", module: "branches", action: "view" },
+  { to: "/users", label: "Users", module: "users", action: "view" },
+  { to: "/roles", label: "Roles", module: "roles", action: "view" },
+  { to: "/audit-logs", label: "Audit Logs", module: "audit_logs", action: "view" },
+  { to: "/settings", label: "Settings", module: "settings", action: "view" },
 ];
 
 export function AppLayout() {
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
+  const visibleNavItems = NAV_ITEMS.filter((item) => !item.module || hasPermission(item.module, item.action!));
 
   return (
     <div className="d-flex vh-100">
-      <nav className="bg-dark text-white d-flex flex-column p-3" style={{ width: 240, flexShrink: 0 }}>
+      <nav className="bg-dark text-white d-flex flex-column p-3" style={{ width: 240, flexShrink: 0, height: "100vh" }}>
         <div className="fs-5 fw-semibold mb-4">Pharmacy ERP</div>
-        <div className="flex-grow-1">
-          {NAV_ITEMS.map((item) => (
+        <div className="flex-grow-1 overflow-auto">
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
