@@ -17,7 +17,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; module?: string; ac
   { to: "/suppliers", label: "Suppliers", module: "suppliers", action: "view" },
   { to: "/expenses", label: "Expenses", module: "expenses", action: "view" },
   { to: "/payments", label: "Payments" },
-  { to: "/cash-sessions", label: "Cash / Counters" },
+  { to: "/cash-sessions", label: "Cash Register" },
   { to: "/reports", label: "Reports", module: "reports", action: "view" },
   { to: "/branches", label: "Branches", module: "branches", action: "view" },
   { to: "/users", label: "Users", module: "users", action: "view" },
