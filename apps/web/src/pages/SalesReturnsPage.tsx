@@ -10,7 +10,7 @@ interface Sale {
 interface SaleItem {
   id: string;
   quantity: number;
-  product: { name: string };
+  product: { name: string; sku: string };
   batch: { batchNumber: string };
 }
 interface ReturnRow {
@@ -29,6 +29,7 @@ export function SalesReturnsPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [saleId, setSaleId] = useState("");
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
+  const [itemSearch, setItemSearch] = useState("");
   const [saleItemId, setSaleItemId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [reason, setReason] = useState("");
@@ -56,7 +57,21 @@ export function SalesReturnsPage() {
       setSaleItems([]);
     }
     setSaleItemId("");
+    setItemSearch("");
   }, [saleId]);
+
+  const filteredSaleItems = saleItems.filter((i) => {
+    const q = itemSearch.trim().toLowerCase();
+    if (!q) return true;
+    return i.product.name.toLowerCase().includes(q) || i.product.sku.toLowerCase().includes(q) || i.batch.batchNumber.toLowerCase().includes(q);
+  });
+
+  useEffect(() => {
+    if (itemSearch.trim().length >= 2 && filteredSaleItems.length === 1) {
+      setSaleItemId(filteredSaleItems[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemSearch, saleItems]);
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -117,9 +132,16 @@ export function SalesReturnsPage() {
             </div>
             <div className="col-md-4">
               <label className="form-label">Item</label>
+              <input
+                className="form-control form-control-sm mb-1"
+                placeholder="Scan barcode or search product..."
+                value={itemSearch}
+                onChange={(e) => setItemSearch(e.target.value)}
+                disabled={!saleId}
+              />
               <select className="form-select" required value={saleItemId} onChange={(e) => setSaleItemId(e.target.value)}>
                 <option value="">Select item</option>
-                {saleItems.map((i) => (
+                {filteredSaleItems.map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.product.name} ({i.batch.batchNumber}) — sold {i.quantity}
                   </option>

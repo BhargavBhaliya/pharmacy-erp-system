@@ -16,7 +16,7 @@ interface Batch {
   batchNumber: string;
   quantity: number;
   purchaseRate: string;
-  product: { id: string; name: string };
+  product: { id: string; name: string; sku: string };
 }
 interface ReturnRow {
   id: string;
@@ -36,6 +36,7 @@ export function PurchaseReturnsPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [batchSearch, setBatchSearch] = useState("");
   const [returns, setReturns] = useState<ReturnRow[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -63,7 +64,23 @@ export function PurchaseReturnsPage() {
     } else {
       setBatches([]);
     }
+    setBatchSearch("");
   }, [form.branchId]);
+
+  const filteredBatches = batches.filter((b) => {
+    const q = batchSearch.trim().toLowerCase();
+    if (!q) return true;
+    return b.product.name.toLowerCase().includes(q) || b.product.sku.toLowerCase().includes(q) || b.batchNumber.toLowerCase().includes(q);
+  });
+
+  // Scanning a barcode/SKU narrows this down to one row — select it automatically so the
+  // cashier doesn't also have to touch the dropdown.
+  useEffect(() => {
+    if (batchSearch.trim().length >= 2 && filteredBatches.length === 1) {
+      setForm((prev) => ({ ...prev, batchId: filteredBatches[0].id }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchSearch, batches]);
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -128,9 +145,16 @@ export function PurchaseReturnsPage() {
             </div>
             <div className="col-md-3">
               <label className="form-label">Batch</label>
+              <input
+                className="form-control form-control-sm mb-1"
+                placeholder="Scan barcode or search product/batch..."
+                value={batchSearch}
+                onChange={(e) => setBatchSearch(e.target.value)}
+                disabled={!form.branchId}
+              />
               <select className="form-select" required value={form.batchId} onChange={(e) => setForm({ ...form, batchId: e.target.value })}>
                 <option value="">Select batch</option>
-                {batches.map((b) => (
+                {filteredBatches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.product.name} — {b.batchNumber} (avail {b.quantity})
                   </option>

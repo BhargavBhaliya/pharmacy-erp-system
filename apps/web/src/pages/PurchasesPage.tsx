@@ -33,6 +33,7 @@ interface Purchase {
 
 interface LineItem {
   productId: string;
+  productName: string;
   batchNumber: string;
   expiryDate: string;
   quantity: number;
@@ -43,19 +44,18 @@ interface LineItem {
   gstRatePercent: number;
 }
 
-const emptyLine: LineItem = { productId: "", batchNumber: "", expiryDate: "", quantity: 1, freeQuantity: 0, purchaseRate: 0, mrp: 0, discountPercent: 0, gstRatePercent: 0 };
-
 export function PurchasesPage() {
   const { hasPermission } = useAuth();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [products, setProducts] = useState<ProductLite[]>([]);
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState<ProductLite[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [branchId, setBranchId] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
-  const [items, setItems] = useState<LineItem[]>([{ ...emptyLine }]);
+  const [items, setItems] = useState<LineItem[]>([]);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -69,17 +69,50 @@ export function PurchasesPage() {
   }
 
   useEffect(() => {
-    Promise.all([
-      api.get<{ data: Branch[] }>("/branches"),
-      api.get<{ data: Supplier[] }>("/suppliers"),
-      api.get<{ data: ProductLite[] }>("/products", { params: { pageSize: 200 } }),
-    ]).then(([b, s, p]) => {
+    Promise.all([api.get<{ data: Branch[] }>("/branches"), api.get<{ data: Supplier[] }>("/suppliers")]).then(([b, s]) => {
       setBranches(b.data.data);
       setSuppliers(s.data.data);
-      setProducts(p.data.data);
     });
     load();
   }, []);
+
+  useEffect(() => {
+    if (search.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+    const handle = setTimeout(() => {
+      api.get<{ data: ProductLite[] }>("/products", { params: { search, pageSize: 10 } }).then((res) => setResults(res.data.data));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [search]);
+
+  function addLine(p: ProductLite) {
+    setItems((prev) => [
+      ...prev,
+      {
+        productId: p.id,
+        productName: p.name,
+        batchNumber: "",
+        expiryDate: "",
+        quantity: 1,
+        freeQuantity: 0,
+        purchaseRate: Number(p.purchasePrice),
+        mrp: Number(p.mrp),
+        discountPercent: 0,
+        gstRatePercent: Number(p.gstRatePercent),
+      },
+    ]);
+    setSearch("");
+    setResults([]);
+  }
+
+  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" && results.length > 0) {
+      e.preventDefault();
+      addLine(results[0]);
+    }
+  }
 
   function updateItem(index: number, patch: Partial<LineItem>) {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
@@ -96,7 +129,7 @@ export function PurchasesPage() {
         items: items.map((i) => ({ ...i, expiryDate: new Date(i.expiryDate).toISOString() })),
       });
       setShowForm(false);
-      setItems([{ ...emptyLine }]);
+      setItems([]);
       setSupplierInvoiceNumber("");
       await load();
     } catch (err) {
@@ -165,6 +198,25 @@ export function PurchasesPage() {
             </div>
           </div>
 
+          <div className="position-relative mb-3">
+            <input
+              className="form-control"
+              placeholder="Scan barcode or search product name / SKU to add a line..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+            />
+            {results.length > 0 && (
+              <div className="list-group position-absolute w-100 shadow" style={{ zIndex: 10 }}>
+                {results.map((p) => (
+                  <button key={p.id} type="button" className="list-group-item list-group-item-action" onClick={() => addLine(p)}>
+                    {p.name} <span className="text-muted small">({p.sku})</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="table-responsive">
             <table className="table table-sm">
               <thead>
@@ -182,31 +234,16 @@ export function PurchasesPage() {
                 </tr>
               </thead>
               <tbody>
+                {items.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="text-center text-muted py-3">
+                      Scan or search a product above to add a line.
+                    </td>
+                  </tr>
+                )}
                 {items.map((item, idx) => (
                   <tr key={idx}>
-                    <td>
-                      <select
-                        className="form-select form-select-sm"
-                        required
-                        value={item.productId}
-                        onChange={(e) => {
-                          const p = products.find((pr) => pr.id === e.target.value);
-                          updateItem(idx, {
-                            productId: e.target.value,
-                            purchaseRate: p ? Number(p.purchasePrice) : item.purchaseRate,
-                            mrp: p ? Number(p.mrp) : item.mrp,
-                            gstRatePercent: p ? Number(p.gstRatePercent) : item.gstRatePercent,
-                          });
-                        }}
-                      >
-                        <option value="">Select</option>
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
+                    <td className="align-middle">{item.productName}</td>
                     <td>
                       <input className="form-control form-control-sm" required value={item.batchNumber} onChange={(e) => updateItem(idx, { batchNumber: e.target.value })} />
                     </td>
@@ -232,22 +269,17 @@ export function PurchasesPage() {
                       <input type="number" className="form-control form-control-sm" style={{ width: 60 }} value={item.gstRatePercent} onChange={(e) => updateItem(idx, { gstRatePercent: Number(e.target.value) })} />
                     </td>
                     <td>
-                      {items.length > 1 && (
-                        <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}>
-                          ×
-                        </button>
-                      )}
+                      <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}>
+                        ×
+                      </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <button type="button" className="btn btn-sm btn-outline-secondary mb-3" style={{ width: 140 }} onClick={() => setItems((prev) => [...prev, { ...emptyLine }])}>
-            + Add line
-          </button>
           <div>
-            <button type="submit" className="btn btn-primary" style={{ width: 180 }}>
+            <button type="submit" className="btn btn-primary" style={{ width: 180 }} disabled={items.length === 0}>
               Save & update stock
             </button>
           </div>
