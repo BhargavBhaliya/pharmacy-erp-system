@@ -2,12 +2,22 @@ import { Router } from "express";
 import { prisma } from "../../lib/prisma";
 import { authenticate, requirePermission } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
-import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
 import { createRoleSchema, updateRolePermissionsSchema, updateRoleSchema } from "./roles.validation";
 
 export const rolesRouter = Router();
 rolesRouter.use(authenticate);
+
+// A role editor must not be able to grant a permission they don't themselves hold — otherwise
+// anyone with roles.edit + users.edit could mint a role with "*.*" and assign it to themselves,
+// escaping whatever restricted role they were actually given.
+function assertNotEscalating(req: import("express").Request, permissionCodes: string[]) {
+  const notHeld = permissionCodes.filter((code) => !req.user!.permissionCodes.has(code));
+  if (notHeld.length > 0) {
+    throw new ForbiddenError(`You cannot grant permissions you don't have: ${notHeld.join(", ")}`);
+  }
+}
 
 // Full catalog of assignable (module, action) permissions, for rendering a permission matrix UI.
 rolesRouter.get("/catalog", requirePermission("roles", "view"), async (_req, res, next) => {
@@ -46,6 +56,10 @@ rolesRouter.post("/", requirePermission("roles", "add"), validateBody(createRole
     const existing = await prisma.role.findFirst({ where: { tenantId: req.user!.tenantId, name: req.body.name } });
     if (existing) throw new ConflictError("A role with this name already exists");
 
+    if (req.body.discountLimitPercent > req.user!.discountLimitPercent) {
+      throw new ForbiddenError(`You cannot set a discount limit higher than your own (${req.user!.discountLimitPercent}%)`);
+    }
+    assertNotEscalating(req, req.body.permissionCodes);
     const permissions = await prisma.permission.findMany({ where: { code: { in: req.body.permissionCodes } } });
 
     const role = await prisma.role.create({
@@ -72,6 +86,10 @@ rolesRouter.put("/:id", requirePermission("roles", "edit"), validateBody(updateR
     const existing = await prisma.role.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId } });
     if (!existing) throw new NotFoundError("Role not found");
 
+    if (req.body.discountLimitPercent !== undefined && req.body.discountLimitPercent > req.user!.discountLimitPercent) {
+      throw new ForbiddenError(`You cannot set a discount limit higher than your own (${req.user!.discountLimitPercent}%)`);
+    }
+
     const role = await prisma.role.update({ where: { id: existing.id }, data: req.body });
     recordAudit({ req, module: "roles", action: "update", entityType: "Role", entityId: role.id, oldValue: existing, newValue: role });
     res.json({ data: role });
@@ -93,6 +111,7 @@ rolesRouter.put(
       });
       if (!existing) throw new NotFoundError("Role not found");
 
+      assertNotEscalating(req, req.body.permissionCodes);
       const permissions = await prisma.permission.findMany({ where: { code: { in: req.body.permissionCodes } } });
       if (permissions.length !== req.body.permissionCodes.length) {
         throw new ValidationError("One or more permission codes are invalid");

@@ -3,13 +3,30 @@ import { prisma } from "../../lib/prisma";
 import { authenticate, requirePermission } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
 import { hashPassword, verifyPassword } from "../../lib/password";
-import { ConflictError, NotFoundError, UnauthorizedError, ValidationError } from "../../lib/errors";
+import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
 import { notify } from "../../lib/notify";
 import { changePasswordSchema, createUserSchema, updateUserSchema } from "./users.validation";
 
 export const usersRouter = Router();
 usersRouter.use(authenticate);
+
+// A user with users.edit must not be able to assign a role carrying permissions they don't
+// themselves hold — otherwise any user-management role could mint itself (or an accomplice
+// account) full admin access via a role that happens to be more powerful than its own.
+async function assertCanAssignRole(req: import("express").Request, roleId: string) {
+  const role = await prisma.role.findFirst({
+    where: { id: roleId, tenantId: req.user!.tenantId },
+    include: { rolePermissions: { include: { permission: true }, where: { allowed: true } } },
+  });
+  if (!role) throw new ValidationError("Invalid roleId for this tenant");
+
+  const notHeld = role.rolePermissions.map((rp) => rp.permission.code).filter((code) => !req.user!.permissionCodes.has(code));
+  if (notHeld.length > 0) {
+    throw new ForbiddenError(`You cannot assign a role with permissions you don't have: ${notHeld.join(", ")}`);
+  }
+  return role;
+}
 
 const userSummarySelect = {
   id: true,
@@ -43,8 +60,7 @@ usersRouter.post("/", requirePermission("users", "add"), validateBody(createUser
     const existing = await prisma.user.findUnique({ where: { email: rest.email } });
     if (existing) throw new ConflictError("An account with this email already exists");
 
-    const role = await prisma.role.findFirst({ where: { id: rest.roleId, tenantId: req.user!.tenantId } });
-    if (!role) throw new ValidationError("Invalid roleId for this tenant");
+    const role = await assertCanAssignRole(req, rest.roleId);
 
     if (branchIds.length > 0) {
       const validBranches = await prisma.branch.count({ where: { id: { in: branchIds }, tenantId: req.user!.tenantId } });
@@ -78,8 +94,8 @@ usersRouter.put("/:id", requirePermission("users", "edit"), validateBody(updateU
     const { branchIds, ...rest } = req.body as typeof req.body;
 
     if (rest.roleId) {
-      const role = await prisma.role.findFirst({ where: { id: rest.roleId, tenantId: req.user!.tenantId } });
-      if (!role) throw new ValidationError("Invalid roleId for this tenant");
+      if (existing.id === req.user!.id) throw new ValidationError("You cannot change your own role");
+      await assertCanAssignRole(req, rest.roleId);
     }
 
     const user = await prisma.$transaction(async (tx) => {
