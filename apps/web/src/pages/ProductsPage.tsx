@@ -36,6 +36,7 @@ const emptyForm = {
   reorderLevel: 0,
   requiresPrescription: false,
 };
+const emptyBarcodes: string[] = [];
 
 export function ProductsPage() {
   const { hasPermission } = useAuth();
@@ -46,6 +47,8 @@ export function ProductsPage() {
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [barcodes, setBarcodes] = useState<string[]>(emptyBarcodes);
+  const [barcodeInput, setBarcodeInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -75,14 +78,36 @@ export function ProductsPage() {
     await load();
   }
 
+  function addBarcode(code: string) {
+    const trimmed = code.trim();
+    if (!trimmed || barcodes.includes(trimmed)) return;
+    setBarcodes((prev) => [...prev, trimmed]);
+    setBarcodeInput("");
+  }
+
+  function handleBarcodeKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addBarcode(barcodeInput);
+    }
+  }
+
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      const payload = { ...form, manufacturerId: form.manufacturerId || undefined, categoryId: form.categoryId || undefined, unitId: form.unitId || undefined };
+      const payload = {
+        ...form,
+        manufacturerId: form.manufacturerId || undefined,
+        categoryId: form.categoryId || undefined,
+        unitId: form.unitId || undefined,
+        barcodes,
+      };
       await api.post("/products", payload);
       setShowForm(false);
       setForm(emptyForm);
+      setBarcodes(emptyBarcodes);
+      setBarcodeInput("");
       await load();
     } catch (err) {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create product");
@@ -196,6 +221,41 @@ export function ProductsPage() {
                   Requires prescription
                 </label>
               </div>
+            </div>
+
+            <div className="col-12">
+              <label className="form-label">Barcode(s)</label>
+              <div className="d-flex gap-2 mb-2">
+                <input
+                  className="form-control"
+                  placeholder="Scan barcode here, or type and press Enter / Add"
+                  value={barcodeInput}
+                  onChange={(e) => setBarcodeInput(e.target.value)}
+                  onKeyDown={handleBarcodeKeyDown}
+                />
+                <button type="button" className="btn btn-outline-secondary" onClick={() => addBarcode(barcodeInput)} disabled={!barcodeInput.trim()}>
+                  Add
+                </button>
+              </div>
+              {barcodes.length === 0 ? (
+                <div className="text-muted small">
+                  No barcode scanned yet — product can still be saved, but won't be found by barcode scan until one is added here or later on the product's edit screen.
+                </div>
+              ) : (
+                <div className="d-flex gap-2 flex-wrap">
+                  {barcodes.map((code) => (
+                    <span key={code} className="badge text-bg-light border d-flex align-items-center gap-2">
+                      {code}
+                      <button
+                        type="button"
+                        className="btn-close"
+                        style={{ fontSize: 10 }}
+                        onClick={() => setBarcodes((prev) => prev.filter((c) => c !== code))}
+                      ></button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
