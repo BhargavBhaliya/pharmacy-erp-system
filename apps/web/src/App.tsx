@@ -7,20 +7,14 @@ import { RegisterBusinessPage } from "./pages/RegisterBusinessPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { BranchesPage } from "./pages/BranchesPage";
 import { UsersPage } from "./pages/UsersPage";
-import { RolesPage } from "./pages/RolesPage";
-import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { CatalogPage } from "./pages/CatalogPage";
 import { SuppliersPage } from "./pages/SuppliersPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { ExpiryPage } from "./pages/ExpiryPage";
-import { StockTransfersPage } from "./pages/StockTransfersPage";
-import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
 import { PurchasesPage } from "./pages/PurchasesPage";
 import { PurchaseReturnsPage } from "./pages/PurchaseReturnsPage";
 import { CustomersPage } from "./pages/CustomersPage";
-import { DoctorsPage } from "./pages/DoctorsPage";
-import { PrescriptionsPage } from "./pages/PrescriptionsPage";
 import { POSPage } from "./pages/POSPage";
 import { SalesPage } from "./pages/SalesPage";
 import { SalesReturnsPage } from "./pages/SalesReturnsPage";
@@ -28,7 +22,6 @@ import { ExpensesPage } from "./pages/ExpensesPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { CashSessionsPage } from "./pages/CashSessionsPage";
 import { ReportsPage } from "./pages/ReportsPage";
-import { BarcodeLabelsPage } from "./pages/BarcodeLabelsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SaleInvoicePrintPage } from "./pages/SaleInvoicePrintPage";
 
@@ -56,22 +49,6 @@ export function App() {
                 element={
                   <RequirePermission module="users" action="view">
                     <UsersPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/roles"
-                element={
-                  <RequirePermission module="roles" action="view">
-                    <RolesPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/audit-logs"
-                element={
-                  <RequirePermission module="audit_logs" action="view">
-                    <AuditLogsPage />
                   </RequirePermission>
                 }
               />
@@ -112,22 +89,6 @@ export function App() {
                 element={
                   <RequirePermission module="expiry" action="view">
                     <ExpiryPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/stock-transfers"
-                element={
-                  <RequirePermission module="stock_transfer" action="view">
-                    <StockTransfersPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/purchase-orders"
-                element={
-                  <RequirePermission module="purchase" action="view">
-                    <PurchaseOrdersPage />
                   </RequirePermission>
                 }
               />
@@ -180,22 +141,6 @@ export function App() {
                 }
               />
               <Route
-                path="/doctors"
-                element={
-                  <RequirePermission module="doctors" action="view">
-                    <DoctorsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/prescriptions"
-                element={
-                  <RequirePermission module="prescriptions" action="view">
-                    <PrescriptionsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
                 path="/expenses"
                 element={
                   <RequirePermission module="expenses" action="view">
@@ -210,14 +155,6 @@ export function App() {
                 element={
                   <RequirePermission module="reports" action="view">
                     <ReportsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/barcode-labels"
-                element={
-                  <RequirePermission module="products" action="view">
-                    <BarcodeLabelsPage />
                   </RequirePermission>
                 }
               />
