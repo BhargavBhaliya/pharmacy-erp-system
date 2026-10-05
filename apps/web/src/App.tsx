@@ -6,7 +6,6 @@ import { LoginPage } from "./pages/LoginPage";
 import { RegisterBusinessPage } from "./pages/RegisterBusinessPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { BranchesPage } from "./pages/BranchesPage";
-import { UsersPage } from "./pages/UsersPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { CatalogPage } from "./pages/CatalogPage";
 import { SuppliersPage } from "./pages/SuppliersPage";
@@ -41,14 +40,6 @@ export function App() {
                 element={
                   <RequirePermission module="branches" action="view">
                     <BranchesPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/users"
-                element={
-                  <RequirePermission module="users" action="view">
-                    <UsersPage />
                   </RequirePermission>
                 }
               />

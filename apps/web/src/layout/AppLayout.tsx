@@ -20,7 +20,6 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; module?: string; ac
   { to: "/cash-sessions", label: "Cash Register" },
   { to: "/reports", label: "Reports", module: "reports", action: "view" },
   { to: "/branches", label: "Branches", module: "branches", action: "view" },
-  { to: "/users", label: "Users", module: "users", action: "view" },
   { to: "/settings", label: "Settings", module: "settings", action: "view" },
 ];
 
