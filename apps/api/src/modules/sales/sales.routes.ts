@@ -5,7 +5,7 @@ import { validateBody } from "../../middleware/validate";
 import { ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
 import { getNextDocumentNumber } from "../../lib/documentNumber";
-import { adjustStock, allocateFefoQuantity } from "../../lib/inventory";
+import { adjustStock, allocateFefoQuantity, allocateSpecificBatch } from "../../lib/inventory";
 import { getCustomerOutstanding } from "../../lib/customerCredit";
 import { computeSaleLineTotals } from "./sales.calc";
 import { cancelSaleSchema, createSaleSchema, type CreateSaleInput } from "./sales.validation";
@@ -14,7 +14,7 @@ export const salesRouter = Router();
 salesRouter.use(authenticate);
 
 const saleInclude = {
-  customer: { select: { id: true, name: true, mobile: true, creditLimit: true } },
+  customer: { select: { id: true, name: true, mobile: true, email: true, address: true, creditLimit: true } },
   doctor: { select: { id: true, name: true } },
   branch: { select: { id: true, name: true, invoicePrefix: true, gstin: true, address: true, contactNumber: true } },
   items: { include: { product: { select: { id: true, name: true, sku: true } }, batch: { select: { id: true, batchNumber: true, expiryDate: true } } } },
@@ -28,13 +28,47 @@ function assertBranchAccessible(req: import("express").Request, branchId: string
 salesRouter.get("/", requirePermission("sales", "view"), async (req, res, next) => {
   try {
     const customerId = typeof req.query.customerId === "string" ? req.query.customerId : undefined;
+    const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
+    const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
     const sales = await prisma.sale.findMany({
-      where: { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds }, ...(customerId ? { customerId } : {}) },
+      where: {
+        tenantId: req.user!.tenantId,
+        branchId: { in: req.user!.branchIds },
+        ...(customerId ? { customerId } : {}),
+        ...(from || to ? { saleDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+      },
       include: saleInclude,
       orderBy: { createdAt: "desc" },
       take: 200,
     });
     res.json({ data: sales });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Lets the billing screen offer a manufacturer/batch choice when a product has stock from
+// more than one batch (e.g. two different manufacturers) instead of always auto-picking FEFO.
+salesRouter.get("/available-batches", requirePermission("pos", "add"), async (req, res, next) => {
+  try {
+    const productId = typeof req.query.productId === "string" ? req.query.productId : undefined;
+    const branchId = typeof req.query.branchId === "string" ? req.query.branchId : undefined;
+    if (!productId || !branchId) throw new ValidationError("productId and branchId are required");
+    assertBranchAccessible(req, branchId);
+
+    const batches = await prisma.batch.findMany({
+      where: {
+        tenantId: req.user!.tenantId,
+        branchId,
+        productId,
+        quantity: { gt: 0 },
+        isBlocked: false,
+        expiryDate: { gt: new Date() },
+      },
+      include: { manufacturer: { select: { id: true, name: true } } },
+      orderBy: { expiryDate: "asc" },
+    });
+    res.json({ data: batches });
   } catch (err) {
     next(err);
   }
@@ -72,6 +106,20 @@ salesRouter.post("/", requirePermission("pos", "add"), validateBody(createSaleSc
     if (products.length !== productIds.length) throw new ValidationError("One or more productIds are invalid for this tenant");
     const productById = new Map(products.map((p) => [p.id, p]));
 
+    // A client-supplied sellingPrice can't be trusted below the product's configured floor —
+    // without this, any POS caller (not just the UI) could sell at an arbitrary price regardless
+    // of the role's discount limit.
+    for (const item of body.items) {
+      const product = productById.get(item.productId)!;
+      if (item.sellingPrice === undefined || product.minSellingPrice === null) continue;
+      const floor = Number(product.minSellingPrice);
+      if (item.sellingPrice < floor) {
+        throw new ForbiddenError(
+          `Selling price ₹${item.sellingPrice} for ${product.name} is below the minimum allowed price ₹${floor}`
+        );
+      }
+    }
+
     let customer = null;
     if (body.customerId) {
       customer = await prisma.customer.findFirst({ where: { id: body.customerId, tenantId: req.user!.tenantId } });
@@ -86,12 +134,20 @@ salesRouter.post("/", requirePermission("pos", "add"), validateBody(createSaleSc
       for (const item of body.items) {
         const product = productById.get(item.productId)!;
         const sellingPrice = item.sellingPrice ?? Number(product.sellingPrice);
-        const allocations = await allocateFefoQuantity(tx, {
-          tenantId: req.user!.tenantId,
-          branchId: body.branchId,
-          productId: item.productId,
-          quantity: item.quantity,
-        });
+        const allocations = item.batchId
+          ? await allocateSpecificBatch(tx, {
+              tenantId: req.user!.tenantId,
+              branchId: body.branchId,
+              productId: item.productId,
+              batchId: item.batchId,
+              quantity: item.quantity,
+            })
+          : await allocateFefoQuantity(tx, {
+              tenantId: req.user!.tenantId,
+              branchId: body.branchId,
+              productId: item.productId,
+              quantity: item.quantity,
+            });
 
         for (const alloc of allocations) {
           const totals = computeSaleLineTotals({

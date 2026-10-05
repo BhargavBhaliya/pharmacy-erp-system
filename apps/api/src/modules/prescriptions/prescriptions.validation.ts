@@ -22,3 +22,8 @@ export const createPrescriptionSchema = z.object({
     .default([]),
 });
 export type CreatePrescriptionInput = z.infer<typeof createPrescriptionSchema>;
+
+export const updatePrescriptionSchema = createPrescriptionSchema.partial().extend({
+  customerId: z.string().min(1).optional(),
+});
+export type UpdatePrescriptionInput = z.infer<typeof updatePrescriptionSchema>;

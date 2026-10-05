@@ -4,7 +4,7 @@ import { authenticate, requirePermission } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
 import { ForbiddenError, NotFoundError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
-import { createPrescriptionSchema } from "./prescriptions.validation";
+import { createPrescriptionSchema, updatePrescriptionSchema } from "./prescriptions.validation";
 
 export const prescriptionsRouter = Router();
 prescriptionsRouter.use(authenticate);
@@ -26,6 +26,7 @@ prescriptionsRouter.get("/", requirePermission("prescriptions", "view"), async (
       where: { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds }, ...(customerId ? { customerId } : {}) },
       include: prescriptionInclude,
       orderBy: { prescriptionDate: "desc" },
+      take: 200,
     });
     res.json({ data: prescriptions });
   } catch (err) {
@@ -59,6 +60,46 @@ prescriptionsRouter.post("/", requirePermission("prescriptions", "add"), validat
 
     recordAudit({ req, module: "prescriptions", action: "create", entityType: "Prescription", entityId: prescription.id, branchId: prescription.branchId });
     res.status(201).json({ data: prescription });
+  } catch (err) {
+    next(err);
+  }
+});
+
+prescriptionsRouter.put("/:id", requirePermission("prescriptions", "edit"), validateBody(updatePrescriptionSchema), async (req, res, next) => {
+  try {
+    const existing = await prisma.prescription.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId }, include: prescriptionInclude });
+    if (!existing) throw new NotFoundError("Prescription not found");
+    assertBranchAccessible(req, existing.branchId);
+    if (req.body.branchId) assertBranchAccessible(req, req.body.branchId);
+
+    if (req.body.customerId) {
+      const customer = await prisma.customer.findFirst({ where: { id: req.body.customerId, tenantId: req.user!.tenantId } });
+      if (!customer) throw new NotFoundError("Customer not found");
+    }
+
+    const { items, ...rest } = req.body as typeof req.body;
+    const prescription = await prisma.$transaction(async (tx) => {
+      if (items) {
+        await tx.prescriptionItem.deleteMany({ where: { prescriptionId: existing.id } });
+      }
+      return tx.prescription.update({
+        where: { id: existing.id },
+        data: { ...rest, ...(items ? { items: { create: items } } : {}) },
+        include: prescriptionInclude,
+      });
+    });
+
+    recordAudit({
+      req,
+      module: "prescriptions",
+      action: "update",
+      entityType: "Prescription",
+      entityId: prescription.id,
+      branchId: prescription.branchId,
+      oldValue: existing,
+      newValue: prescription,
+    });
+    res.json({ data: prescription });
   } catch (err) {
     next(err);
   }

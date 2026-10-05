@@ -27,6 +27,7 @@ purchaseReturnsRouter.get("/", requirePermission("purchase_return", "view"), asy
       where: { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds } },
       include: returnInclude,
       orderBy: { createdAt: "desc" },
+      take: 200,
     });
     res.json({ data: returns });
   } catch (err) {
@@ -46,11 +47,22 @@ purchaseReturnsRouter.post(
       const supplier = await prisma.supplier.findFirst({ where: { id: body.supplierId, tenantId: req.user!.tenantId } });
       if (!supplier) throw new ValidationError("Invalid supplierId for this tenant");
 
+      const returnBatches = await prisma.batch.findMany({
+        where: { id: { in: body.items.map((i) => i.batchId) }, tenantId: req.user!.tenantId, branchId: body.branchId },
+      });
+      const returnBatchById = new Map(returnBatches.map((b) => [b.id, b]));
+      const returnQtyByBatch = new Map<string, number>();
       for (const item of body.items) {
-        const batch = await prisma.batch.findFirst({ where: { id: item.batchId, tenantId: req.user!.tenantId, branchId: body.branchId, productId: item.productId } });
-        if (!batch) throw new ValidationError(`Batch ${item.batchId} not found in this branch for this product`);
-        if (batch.quantity < item.quantity) {
-          throw new ValidationError(`Insufficient stock in batch ${batch.batchNumber}: available ${batch.quantity}, requested ${item.quantity}`);
+        const batch = returnBatchById.get(item.batchId);
+        if (!batch || batch.productId !== item.productId) {
+          throw new ValidationError(`Batch ${item.batchId} not found in this branch for this product`);
+        }
+        returnQtyByBatch.set(item.batchId, (returnQtyByBatch.get(item.batchId) ?? 0) + item.quantity);
+      }
+      for (const [batchId, requestedQty] of returnQtyByBatch) {
+        const batch = returnBatchById.get(batchId)!;
+        if (batch.quantity < requestedQty) {
+          throw new ValidationError(`Insufficient stock in batch ${batch.batchNumber}: available ${batch.quantity}, requested ${requestedQty}`);
         }
       }
 

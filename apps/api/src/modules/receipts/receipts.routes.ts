@@ -24,6 +24,7 @@ receiptsRouter.get("/", requirePermission("payments", "view"), async (req, res, 
       where: { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds } },
       include: receiptInclude,
       orderBy: { createdAt: "desc" },
+      take: 200,
     });
     res.json({ data: receipts });
   } catch (err) {

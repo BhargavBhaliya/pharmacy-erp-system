@@ -74,6 +74,33 @@ export async function allocateFefoQuantity(
   return allocations;
 }
 
+// Used when the cashier (or sale line) explicitly picks a batch/manufacturer instead of
+// letting FEFO choose — sells only from that batch, never silently splitting into others.
+export async function allocateSpecificBatch(
+  db: Db,
+  params: { tenantId: string; branchId: string; productId: string; batchId: string; quantity: number }
+): Promise<FefoAllocation[]> {
+  const batch = await db.batch.findFirst({
+    where: { id: params.batchId, tenantId: params.tenantId, branchId: params.branchId, productId: params.productId },
+  });
+  if (!batch) throw new ValidationError("Selected batch not found for this product/branch");
+  if (batch.isBlocked) throw new ValidationError(`Batch ${batch.batchNumber} is blocked and cannot be sold`);
+  if (batch.expiryDate <= new Date()) throw new ValidationError(`Batch ${batch.batchNumber} is expired and cannot be sold`);
+  if (batch.quantity < params.quantity) {
+    throw new ValidationError(`Insufficient stock in batch ${batch.batchNumber}: available ${batch.quantity}, requested ${params.quantity}`);
+  }
+
+  return [
+    {
+      batchId: batch.id,
+      batchNumber: batch.batchNumber,
+      mrp: Number(batch.mrp),
+      gstRatePercent: Number(batch.gstRatePercent),
+      quantity: params.quantity,
+    },
+  ];
+}
+
 interface AdjustStockParams {
   tenantId: string;
   branchId: string;

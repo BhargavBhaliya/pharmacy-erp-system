@@ -11,6 +11,7 @@ export const createSaleSchema = z.object({
     .array(
       z.object({
         productId: z.string().min(1),
+        batchId: z.string().optional(),
         quantity: z.number().int().positive(),
         sellingPrice: z.number().min(0).optional(),
         discountPercent: z.number().min(0).max(100).default(0),

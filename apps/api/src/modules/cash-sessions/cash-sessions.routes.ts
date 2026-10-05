@@ -24,6 +24,7 @@ cashSessionsRouter.get("/", requirePermission("pos", "view"), async (req, res, n
       where: { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds } },
       include: sessionInclude,
       orderBy: { openedAt: "desc" },
+      take: 200,
     });
     res.json({ data: sessions });
   } catch (err) {

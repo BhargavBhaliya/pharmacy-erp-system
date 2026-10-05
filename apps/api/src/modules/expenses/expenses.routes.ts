@@ -46,6 +46,7 @@ expensesRouter.get("/", requirePermission("expenses", "view"), async (req, res, 
       where: { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds } },
       include: expenseInclude,
       orderBy: { createdAt: "desc" },
+      take: 200,
     });
     res.json({ data: expenses });
   } catch (err) {

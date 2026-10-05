@@ -24,6 +24,7 @@ supplierPaymentsRouter.get("/", requirePermission("purchase", "view"), async (re
       where: { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds } },
       include: supplierPaymentInclude,
       orderBy: { createdAt: "desc" },
+      take: 200,
     });
     res.json({ data: payments });
   } catch (err) {

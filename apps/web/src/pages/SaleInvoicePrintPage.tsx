@@ -21,7 +21,7 @@ interface SaleDetail {
   taxAmount: string;
   discountAmount: string;
   paymentStatus: string;
-  customer?: { name: string; mobile?: string | null } | null;
+  customer?: { name: string; mobile?: string | null; email?: string | null; address?: string | null } | null;
   doctor?: { name: string } | null;
   branch: { name: string; gstin?: string | null; address?: string | null; contactNumber?: string | null };
   items: { id: string; quantity: number; sellingPrice: string; discountPercent: string; gstRatePercent: string; lineTotal: string; product: { name: string; sku: string }; batch: { batchNumber: string; expiryDate: string } }[];
@@ -69,9 +69,11 @@ export function SaleInvoicePrintPage() {
         </div>
         <div className="text-end">
           <div>
-            <strong>Customer:</strong> {sale.customer?.name ?? "Walk-in"}
+            <strong>Bill to:</strong> {sale.customer?.name ?? "Walk-in customer"}
           </div>
-          {sale.customer?.mobile && <div>{sale.customer.mobile}</div>}
+          {sale.customer?.mobile && <div>📞 {sale.customer.mobile}</div>}
+          {sale.customer?.email && <div>{sale.customer.email}</div>}
+          {sale.customer?.address && <div className="text-muted small">{sale.customer.address}</div>}
           {sale.doctor && <div>Dr. {sale.doctor.name}</div>}
         </div>
       </div>

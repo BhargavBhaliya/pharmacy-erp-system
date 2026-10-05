@@ -112,6 +112,7 @@ inventoryRouter.get("/expiry", requirePermission("expiry", "view"), async (req, 
         branch: { select: { id: true, name: true } },
       },
       orderBy: { expiryDate: "asc" },
+      take: 500,
     });
 
     const data = batches.map((b) => ({

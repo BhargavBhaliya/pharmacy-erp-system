@@ -23,20 +23,13 @@ function assertBranchAccessible(req: import("express").Request, branchId: string
   if (!req.user!.branchIds.includes(branchId)) throw new ForbiddenError("You do not have access to this branch");
 }
 
-async function alreadyReturnedQuantity(saleItemId: string): Promise<number> {
-  const rows = await prisma.salesReturnItem.findMany({
-    where: { saleItemId, salesReturn: { status: "APPROVED" } },
-    select: { quantity: true },
-  });
-  return rows.reduce((sum, r) => sum + r.quantity, 0);
-}
-
 salesReturnRouter.get("/", requirePermission("sales_return", "view"), async (req, res, next) => {
   try {
     const returns = await prisma.salesReturn.findMany({
       where: { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds } },
       include: returnInclude,
       orderBy: { createdAt: "desc" },
+      take: 200,
     });
     res.json({ data: returns });
   } catch (err) {
@@ -77,6 +70,16 @@ salesReturnRouter.post("/", requirePermission("sales_return", "add"), validateBo
     if (sale.status === "CANCELLED") throw new ValidationError("Cannot return items from a cancelled sale");
 
     const saleItemById = new Map(sale.items.map((i) => [i.id, i]));
+
+    // One grouped query covering every line in the request, instead of a separate
+    // "how much of this line was already returned" lookup per item.
+    const returnedGroups = await prisma.salesReturnItem.groupBy({
+      by: ["saleItemId"],
+      where: { saleItemId: { in: body.items.map((i) => i.saleItemId) }, salesReturn: { status: "APPROVED" } },
+      _sum: { quantity: true },
+    });
+    const alreadyReturnedByItem = new Map(returnedGroups.map((g) => [g.saleItemId, g._sum.quantity ?? 0]));
+
     let totalAmount = 0;
     const itemsData: { saleItemId: string; productId: string; batchId: string; quantity: number; rate: number; lineTotal: number }[] = [];
 
@@ -84,7 +87,7 @@ salesReturnRouter.post("/", requirePermission("sales_return", "add"), validateBo
       const saleItem = saleItemById.get(item.saleItemId);
       if (!saleItem) throw new ValidationError(`Sale item ${item.saleItemId} does not belong to this sale`);
 
-      const alreadyReturned = await alreadyReturnedQuantity(item.saleItemId);
+      const alreadyReturned = alreadyReturnedByItem.get(item.saleItemId) ?? 0;
       if (alreadyReturned + item.quantity > saleItem.quantity) {
         throw new ValidationError(`Cannot return ${item.quantity}: only ${saleItem.quantity - alreadyReturned} of this line remains returnable`);
       }

@@ -290,6 +290,7 @@ model AuditLog {
 
   @@index([tenantId, createdAt])
   @@index([entityType, entityId])
+  @@index([userId])
   @@map("audit_logs")
 }
 
@@ -507,6 +508,8 @@ model Batch {
   @@index([tenantId, branchId])
   @@index([productId])
   @@index([expiryDate])
+  @@index([supplierId])
+  @@index([manufacturerId])
   @@map("batches")
 }
 
@@ -587,6 +590,8 @@ model StockTransfer {
   items      StockTransferItem[]
 
   @@index([tenantId])
+  @@index([fromBranchId])
+  @@index([toBranchId])
   @@map("stock_transfers")
 }
 
@@ -1058,6 +1063,7 @@ model SalesReturnItem {
   batch       Batch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@index([salesReturnId])
+  @@index([saleItemId])
   @@map("sales_return_items")
 }
 
@@ -1210,6 +1216,7 @@ model CashSession {
   counter Counter @relation(fields: [counterId], references: [id])
 
   @@index([tenantId, branchId])
+  @@index([counterId, status])
   @@map("cash_sessions")
 }
 

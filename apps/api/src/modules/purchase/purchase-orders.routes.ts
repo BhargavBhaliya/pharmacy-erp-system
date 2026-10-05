@@ -26,6 +26,7 @@ purchaseOrdersRouter.get("/", requirePermission("purchase", "view"), async (req,
       where: { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds } },
       include: poInclude,
       orderBy: { createdAt: "desc" },
+      take: 200,
     });
     res.json({ data: orders });
   } catch (err) {

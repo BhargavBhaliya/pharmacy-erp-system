@@ -17,9 +17,11 @@ interface Doctor {
 }
 interface Prescription {
   id: string;
+  branchId: string;
+  customerId: string;
   prescriptionDate: string;
-  customer: { name: string };
-  doctor?: { name: string } | null;
+  customer: { id: string; name: string };
+  doctor?: { id: string; name: string } | null;
   items: { id: string; medicineName: string; dose?: string | null }[];
 }
 
@@ -32,6 +34,7 @@ export function PrescriptionsPage() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,22 +55,46 @@ export function PrescriptionsPage() {
     load();
   }, []);
 
-  async function handleCreate(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    const payload = {
+      branchId: form.branchId,
+      customerId: form.customerId,
+      doctorId: form.doctorId || undefined,
+      items: form.medicineName ? [{ medicineName: form.medicineName, dose: form.dose || undefined }] : [],
+    };
     try {
-      await api.post("/prescriptions", {
-        branchId: form.branchId,
-        customerId: form.customerId,
-        doctorId: form.doctorId || undefined,
-        items: form.medicineName ? [{ medicineName: form.medicineName, dose: form.dose || undefined }] : [],
-      });
+      if (editingId) {
+        await api.put(`/prescriptions/${editingId}`, payload);
+      } else {
+        await api.post("/prescriptions", payload);
+      }
       setShowForm(false);
+      setEditingId(null);
       setForm(emptyForm);
       await load();
     } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create prescription");
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save prescription");
     }
+  }
+
+  function handleEdit(p: Prescription) {
+    setEditingId(p.id);
+    setForm({
+      branchId: p.branchId,
+      customerId: p.customerId,
+      doctorId: p.doctor?.id ?? "",
+      medicineName: p.items[0]?.medicineName ?? "",
+      dose: p.items[0]?.dose ?? "",
+    });
+    setShowForm(true);
+  }
+
+  function handleCancelForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
   }
 
   return (
@@ -75,7 +102,7 @@ export function PrescriptionsPage() {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h3 className="mb-0">Prescriptions</h3>
         {hasPermission("prescriptions", "add") && (
-          <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
+          <button className="btn btn-primary" onClick={() => (showForm ? handleCancelForm() : setShowForm(true))}>
             {showForm ? "Cancel" : "New prescription"}
           </button>
         )}
@@ -84,7 +111,8 @@ export function PrescriptionsPage() {
       {error && <div className="alert alert-danger py-2">{error}</div>}
 
       {showForm && (
-        <form className="card card-body mb-4" onSubmit={handleCreate}>
+        <form className="card card-body mb-4" onSubmit={handleSubmit}>
+          {editingId && <div className="text-muted small mb-2">Editing prescription</div>}
           <div className="row g-3">
             <div className="col-md-3">
               <label className="form-label">Branch</label>
@@ -129,7 +157,7 @@ export function PrescriptionsPage() {
             </div>
           </div>
           <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save
+            {editingId ? "Update" : "Save"}
           </button>
         </form>
       )}
@@ -142,12 +170,13 @@ export function PrescriptionsPage() {
               <th>Customer</th>
               <th>Doctor</th>
               <th>Medicines</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={4} className="text-center text-muted py-4">
+                <td colSpan={5} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
@@ -158,6 +187,13 @@ export function PrescriptionsPage() {
                 <td>{p.customer.name}</td>
                 <td>{p.doctor?.name ?? "—"}</td>
                 <td>{p.items.map((i) => i.medicineName).join(", ") || "—"}</td>
+                <td className="text-end">
+                  {hasPermission("prescriptions", "edit") && (
+                    <button className="btn btn-sm btn-outline-secondary" onClick={() => handleEdit(p)}>
+                      Edit
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

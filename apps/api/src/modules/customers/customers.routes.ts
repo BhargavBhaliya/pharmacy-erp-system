@@ -21,6 +21,7 @@ customersRouter.get("/", requirePermission("customers", "view"), async (req, res
           : {}),
       },
       orderBy: { name: "asc" },
+      take: 500,
     });
     res.json({ data: customers });
   } catch (err) {

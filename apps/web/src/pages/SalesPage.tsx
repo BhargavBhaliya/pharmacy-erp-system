@@ -11,9 +11,27 @@ interface Sale {
   totalAmount: string;
   paymentStatus: string;
   status: string;
-  customer?: { name: string } | null;
+  customer?: { name: string; mobile?: string | null } | null;
   branch: { name: string };
   createdAt: string;
+}
+
+type FilterMode = "all" | "today" | "yesterday" | "day" | "month";
+
+function pad(n: number) {
+  return String(n).padStart(2, "0");
+}
+function toDateInput(d: Date) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function toMonthInput(d: Date) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+}
+function startOfDay(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+function endOfDay(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
 }
 
 export function SalesPage() {
@@ -23,17 +41,43 @@ export function SalesPage() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [filterMode, setFilterMode] = useState<FilterMode>("all");
+  const [dayValue, setDayValue] = useState(toDateInput(new Date()));
+  const [monthValue, setMonthValue] = useState(toMonthInput(new Date()));
+
+  function computeRange(): { from?: Date; to?: Date } {
+    const now = new Date();
+    if (filterMode === "today") return { from: startOfDay(now), to: endOfDay(now) };
+    if (filterMode === "yesterday") {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      return { from: startOfDay(y), to: endOfDay(y) };
+    }
+    if (filterMode === "day" && dayValue) {
+      const d = new Date(`${dayValue}T00:00:00`);
+      return { from: startOfDay(d), to: endOfDay(d) };
+    }
+    if (filterMode === "month" && monthValue) {
+      const [y, m] = monthValue.split("-").map(Number);
+      return { from: new Date(y, m - 1, 1, 0, 0, 0, 0), to: new Date(y, m, 0, 23, 59, 59, 999) };
+    }
+    return {};
+  }
 
   async function load() {
     setLoading(true);
-    const res = await api.get<{ data: Sale[] }>("/sales");
+    const { from, to } = computeRange();
+    const res = await api.get<{ data: Sale[] }>("/sales", {
+      params: { ...(from ? { from: from.toISOString() } : {}), ...(to ? { to: to.toISOString() } : {}) },
+    });
     setSales(res.data.data);
     setLoading(false);
   }
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterMode, dayValue, monthValue]);
 
   async function handleCancel(id: string) {
     setError(null);
@@ -55,10 +99,55 @@ export function SalesPage() {
     return <span className={`badge ${map[status] ?? "text-bg-secondary"}`}>{status}</span>;
   };
 
+  const totalAmount = sales.filter((s) => s.status !== "CANCELLED").reduce((sum, s) => sum + Number(s.totalAmount), 0);
+
   return (
     <div>
-      <h3 className="mb-4">Sales</h3>
+      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h3 className="mb-0">Sales</h3>
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          <div className="btn-group" role="group">
+            {(["all", "today", "yesterday"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`btn btn-sm ${filterMode === m ? "btn-primary" : "btn-outline-primary"}`}
+                onClick={() => setFilterMode(m)}
+              >
+                {m === "all" ? "All" : m === "today" ? "Today" : "Yesterday"}
+              </button>
+            ))}
+          </div>
+          <input
+            type="date"
+            className={`form-control form-control-sm ${filterMode === "day" ? "border-primary" : ""}`}
+            style={{ width: 150 }}
+            value={dayValue}
+            onChange={(e) => {
+              setDayValue(e.target.value);
+              setFilterMode("day");
+            }}
+          />
+          <input
+            type="month"
+            className={`form-control form-control-sm ${filterMode === "month" ? "border-primary" : ""}`}
+            style={{ width: 140 }}
+            value={monthValue}
+            onChange={(e) => {
+              setMonthValue(e.target.value);
+              setFilterMode("month");
+            }}
+          />
+        </div>
+      </div>
+
       {error && <div className="alert alert-danger py-2">{error}</div>}
+
+      <div className="d-flex justify-content-between align-items-center mb-2 text-muted small">
+        <span>{loading ? "Loading..." : `${sales.length} invoice(s)`}</span>
+        <span className="fw-semibold fs-6 text-dark">Total: ₹{totalAmount.toFixed(2)}</span>
+      </div>
+
       <div className="card">
         <table className="table mb-0">
           <thead>
@@ -85,7 +174,10 @@ export function SalesPage() {
               <tr key={s.id}>
                 <td>{s.invoiceNumber}</td>
                 <td>{s.invoiceType}</td>
-                <td>{s.customer?.name ?? "Walk-in"}</td>
+                <td>
+                  {s.customer?.name ?? "Walk-in"}
+                  {s.customer?.mobile && <div className="text-muted small">{s.customer.mobile}</div>}
+                </td>
                 <td>{s.branch.name}</td>
                 <td>₹{s.totalAmount}</td>
                 <td>{paymentBadge(s.paymentStatus)}</td>

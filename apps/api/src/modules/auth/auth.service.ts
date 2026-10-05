@@ -48,18 +48,23 @@ export async function registerBusiness(input: RegisterBusinessInput) {
   });
 }
 
+// A valid-shaped bcrypt hash with no corresponding password. Used so a login against a
+// nonexistent email still runs a real bcrypt comparison, taking the same ~100ms as a real
+// user — otherwise the early-return path is near-instant and the response-time difference
+// lets an attacker enumerate registered emails without ever guessing a password.
+const DUMMY_PASSWORD_HASH = "$2a$12$CwTycUXWue0Thq9StjUM0uQxTmrjOq/Esu5tzJ2YN5yJzkC7WMZEa";
+
 export async function login(input: LoginInput, meta: { ipAddress?: string; userAgent?: string }) {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
     include: { role: true },
   });
 
-  if (!user || user.deletedAt || !user.isActive) {
+  const validPassword = await verifyPassword(input.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+
+  if (!user || user.deletedAt || !user.isActive || !validPassword) {
     throw new UnauthorizedError("Invalid email or password");
   }
-
-  const validPassword = await verifyPassword(input.password, user.passwordHash);
-  if (!validPassword) throw new UnauthorizedError("Invalid email or password");
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 

@@ -29,6 +29,7 @@ stockTransferRouter.get("/", requirePermission("stock_transfer", "view"), async 
       },
       include: transferInclude,
       orderBy: { createdAt: "desc" },
+      take: 200,
     });
     res.json({ data: transfers });
   } catch (err) {
@@ -60,13 +61,25 @@ stockTransferRouter.post("/", requirePermission("stock_transfer", "add"), valida
       throw new ForbiddenError("You do not have access to either branch in this transfer");
     }
 
+    const batches = await prisma.batch.findMany({
+      where: { id: { in: items.map((i: { batchId: string }) => i.batchId) }, tenantId: req.user!.tenantId, branchId: fromBranchId },
+    });
+    const batchById = new Map(batches.map((b) => [b.id, b]));
+
+    // Sum requested quantity per batch first — two transfer lines pulling from the same batch
+    // must be checked together, not against the live quantity independently.
+    const requestedByBatch = new Map<string, number>();
     for (const item of items) {
-      const batch = await prisma.batch.findFirst({
-        where: { id: item.batchId, tenantId: req.user!.tenantId, branchId: fromBranchId, productId: item.productId },
-      });
-      if (!batch) throw new ValidationError(`Batch ${item.batchId} not found in source branch for this product`);
-      if (batch.quantity < item.quantity) {
-        throw new ValidationError(`Insufficient stock in batch ${batch.batchNumber}: available ${batch.quantity}, requested ${item.quantity}`);
+      const batch = batchById.get(item.batchId);
+      if (!batch || batch.productId !== item.productId) {
+        throw new ValidationError(`Batch ${item.batchId} not found in source branch for this product`);
+      }
+      requestedByBatch.set(item.batchId, (requestedByBatch.get(item.batchId) ?? 0) + item.quantity);
+    }
+    for (const [batchId, requestedQty] of requestedByBatch) {
+      const batch = batchById.get(batchId)!;
+      if (batch.quantity < requestedQty) {
+        throw new ValidationError(`Insufficient stock in batch ${batch.batchNumber}: available ${batch.quantity}, requested ${requestedQty}`);
       }
     }
 
