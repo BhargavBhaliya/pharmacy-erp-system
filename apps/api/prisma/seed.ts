@@ -2,6 +2,7 @@
 import { prisma } from "../src/lib/prisma";
 import { hashPassword } from "../src/lib/password";
 import { seedDefaultRolesForTenant } from "../src/lib/tenantSetup";
+import { nextStoreCode } from "../src/lib/storeCode";
 import { getNextDocumentNumber } from "../src/lib/documentNumber";
 import { adjustStock } from "../src/lib/inventory";
 import { computePurchaseTotals } from "../src/modules/purchase/purchase.calc";
@@ -17,6 +18,7 @@ async function main() {
     return;
   }
 
+  const storeCode = await nextStoreCode(prisma);
   const tenant = await prisma.tenant.create({
     data: {
       businessName: "Demo Medical Store",
@@ -26,6 +28,7 @@ async function main() {
       gstin: "27AAAAA0000A1Z5",
       state: "Maharashtra",
       city: "Pune",
+      storeCode,
     },
   });
 

@@ -7,6 +7,7 @@ import {
   signAccessToken,
 } from "../../lib/jwt";
 import { seedDefaultRolesForTenant } from "../../lib/tenantSetup";
+import { nextStoreCode } from "../../lib/storeCode";
 import { ConflictError, UnauthorizedError } from "../../lib/errors";
 import type { LoginInput, RegisterBusinessInput } from "./auth.validation";
 
@@ -17,8 +18,9 @@ export async function registerBusiness(input: RegisterBusinessInput) {
   const passwordHash = await hashPassword(input.password);
 
   return prisma.$transaction(async (tx) => {
+    const storeCode = await nextStoreCode(tx);
     const tenant = await tx.tenant.create({
-      data: { businessName: input.businessName, ownerName: input.ownerName, email: input.email },
+      data: { businessName: input.businessName, ownerName: input.ownerName, email: input.email, storeCode },
     });
 
     // Default branch/warehouse/counter so the tenant is immediately usable.
@@ -57,12 +59,12 @@ const DUMMY_PASSWORD_HASH = "$2a$12$CwTycUXWue0Thq9StjUM0uQxTmrjOq/Esu5tzJ2YN5yJ
 export async function login(input: LoginInput, meta: { ipAddress?: string; userAgent?: string }) {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
-    include: { role: true },
+    include: { role: true, tenant: { select: { isActive: true } } },
   });
 
   const validPassword = await verifyPassword(input.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
 
-  if (!user || user.deletedAt || !user.isActive || !validPassword) {
+  if (!user || user.deletedAt || !user.isActive || !user.tenant.isActive || !validPassword) {
     throw new UnauthorizedError("Invalid email or password");
   }
 
@@ -91,10 +93,17 @@ export async function refresh(rawToken: string, meta: { ipAddress?: string; user
   const tokenHash = hashRefreshToken(rawToken);
   const stored = await prisma.refreshToken.findUnique({
     where: { tokenHash },
-    include: { user: true },
+    include: { user: { include: { tenant: { select: { isActive: true } } } } },
   });
 
-  if (!stored || stored.revokedAt || stored.expiresAt < new Date() || !stored.user.isActive || stored.user.deletedAt) {
+  if (
+    !stored ||
+    stored.revokedAt ||
+    stored.expiresAt < new Date() ||
+    !stored.user.isActive ||
+    stored.user.deletedAt ||
+    !stored.user.tenant.isActive
+  ) {
     throw new UnauthorizedError("Invalid or expired refresh token");
   }
 

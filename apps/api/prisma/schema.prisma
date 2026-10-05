@@ -38,6 +38,9 @@ model Tenant {
   // Indian FY defaults to April(4)-March; kept configurable per spec section 46.
   financialYearStartMonth Int      @default(4)
   isActive                Boolean  @default(true)
+  // Human-readable store identifier for the Platform Admin ("Store 001" etc.), distinct from
+  // the opaque cuid `id`. Assigned sequentially at tenant-creation time.
+  storeCode               String   @unique
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -73,6 +76,44 @@ model Tenant {
   notifications     Notification[]
 
   @@map("tenants")
+}
+
+// ---------------------------------------------------------------------------
+// Platform Super Admin — a single operator identity that sits OUTSIDE every tenant and
+// manages stores (create/edit/activate/deactivate, reset passwords, impersonate for support).
+// Deliberately has no relation to Tenant/User: it must never be confused with a tenant
+// principal, and a tenant-issued JWT must never be accepted by platform-admin routes or
+// vice versa (enforced by a separate signing secret too, see lib/platformJwt.ts).
+// ---------------------------------------------------------------------------
+
+model PlatformAdmin {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  refreshTokens PlatformRefreshToken[]
+
+  @@map("platform_admins")
+}
+
+model PlatformRefreshToken {
+  id              String    @id @default(cuid())
+  platformAdminId String
+  tokenHash       String    @unique
+  userAgent       String?
+  ipAddress       String?
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  platformAdmin PlatformAdmin @relation(fields: [platformAdminId], references: [id], onDelete: Cascade)
+
+  @@index([platformAdminId])
+  @@map("platform_refresh_tokens")
 }
 
 model Branch {

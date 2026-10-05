@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { RequireAuth, RequirePermission } from "./auth/RequireAuth";
 import { AppLayout } from "./layout/AppLayout";
@@ -23,6 +23,14 @@ import { CashSessionsPage } from "./pages/CashSessionsPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SaleInvoicePrintPage } from "./pages/SaleInvoicePrintPage";
+import { ImpersonationLandingPage } from "./pages/ImpersonationLandingPage";
+import { PlatformAuthProvider } from "./platform/auth/PlatformAuthContext";
+import { RequirePlatformAuth } from "./platform/auth/RequirePlatformAuth";
+import { PlatformLayout } from "./platform/layout/PlatformLayout";
+import { PlatformLoginPage } from "./platform/pages/PlatformLoginPage";
+import { StoreListPage } from "./platform/pages/StoreListPage";
+import { CreateStorePage } from "./platform/pages/CreateStorePage";
+import { StoreDetailPage } from "./platform/pages/StoreDetailPage";
 
 export function App() {
   return (
@@ -31,6 +39,7 @@ export function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterBusinessPage />} />
+          <Route path="/impersonate-landing" element={<ImpersonationLandingPage />} />
 
           <Route element={<RequireAuth />}>
             <Route element={<AppLayout />}>
@@ -166,6 +175,25 @@ export function App() {
                 }
               />
               <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Route>
+
+          <Route
+            path="/platform/*"
+            element={
+              <PlatformAuthProvider>
+                <Outlet />
+              </PlatformAuthProvider>
+            }
+          >
+            <Route path="login" element={<PlatformLoginPage />} />
+            <Route element={<RequirePlatformAuth />}>
+              <Route element={<PlatformLayout />}>
+                <Route index element={<Navigate to="/platform/stores" replace />} />
+                <Route path="stores" element={<StoreListPage />} />
+                <Route path="stores/new" element={<CreateStorePage />} />
+                <Route path="stores/:id" element={<StoreDetailPage />} />
+              </Route>
             </Route>
           </Route>
         </Routes>

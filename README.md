@@ -139,6 +139,8 @@ Copy `apps/api/.env.example` to `apps/api/.env`.
 | `PORT` | API port (default 4000) |
 | `NODE_ENV` | `development` \| `test` \| `production` |
 | `CORS_ORIGIN` | Allowed frontend origin (default `http://localhost:5173`) |
+| `PLATFORM_JWT_ACCESS_SECRET` | ≥16-char signing secret for Platform Admin tokens — **must differ** from `JWT_ACCESS_SECRET` so a tenant-user token can never be accepted by platform routes or vice versa |
+| `PLATFORM_JWT_ACCESS_EXPIRES_IN` / `PLATFORM_JWT_REFRESH_EXPIRES_IN` | Platform Admin token lifetimes (default `30m` / `7d`) |
 
 ## 6. Admin setup
 
@@ -150,6 +152,47 @@ Copy `apps/api/.env.example` to `apps/api/.env`.
    start month.
 3. Add branches under **Branches**, then warehouses/counters per branch as needed.
 4. Add a manufacturer, category, and unit or two under **Catalog** before entering products.
+
+### 6a. Platform Super Admin (managing many stores from one place)
+
+Separate from the per-tenant "Super Admin" role above: a **Platform Admin** is a single
+operator identity (you, the business running this CRM for 50+ pharmacy stores) that sits
+outside every tenant entirely. It has its own login, its own JWT signing secret and payload
+shape, and its own refresh-token table — a tenant user's token is never accepted by platform
+routes, and a platform token is never accepted by the normal app, by construction (different
+secrets, different payload).
+
+**One-time setup** — there is no sign-up page for this, deliberately:
+
+```powershell
+cd apps/api
+$env:PLATFORM_ADMIN_NAME="Your Name"
+$env:PLATFORM_ADMIN_EMAIL="you@example.com"
+$env:PLATFORM_ADMIN_PASSWORD="choose-a-strong-password"
+npm run seed:platform-admin
+```
+
+Running it again once an admin exists is a no-op (prints a message and exits) — there is
+intentionally no API endpoint that can create one.
+
+**Using it**: sign in at `/platform/login` (separate from the normal `/login`). From
+`/platform/stores` you can:
+
+- **Create a store** — sets up the tenant, its Main Branch/Warehouse/Counter, all default
+  roles, and the owner's first login, exactly like self-service registration does, plus a
+  human-readable **Store Code** (`STORE-0001`, `STORE-0002`, ...).
+- **Search/filter** stores by name, email, store code, or active/inactive status.
+- **Edit store details**, **activate/deactivate** a store (deactivating immediately blocks
+  that store's users — both new logins and any already-open session, checked on every
+  request), **reset a store user's password** (shown once, forces re-login everywhere), and
+  **"Access this store"** — a one-click, no-password hand-off into the normal app logged in as
+  a chosen store user, for support. Every one of these actions is written to *that store's own*
+  Audit Logs page (`module: "platform_admin"`) so it's never invisible to the store owner.
+
+Every `/api/platform/*` route takes the target store's id from the URL and is gated solely by
+platform-admin authentication — the existing per-request `tenantId` scoping used everywhere
+else in the app is what every *tenant* route still relies on; this layer is the one place that
+deliberately reaches across stores, and only an authenticated Platform Admin can reach it.
 
 ## 7. User / role setup
 

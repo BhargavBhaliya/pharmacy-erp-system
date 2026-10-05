@@ -13,6 +13,11 @@ declare global {
         permissionCodes: Set<string>;
         discountLimitPercent: number;
       };
+      platformAdmin?: {
+        id: string;
+        name: string;
+        email: string;
+      };
     }
   }
 }

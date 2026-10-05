@@ -7,6 +7,11 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(16, "JWT_REFRESH_SECRET must be at least 16 chars"),
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
+  // Deliberately a different secret from JWT_ACCESS_SECRET so a tenant-user token can never be
+  // decoded/accepted by the Platform Admin middleware, and vice versa, by construction.
+  PLATFORM_JWT_ACCESS_SECRET: z.string().min(16, "PLATFORM_JWT_ACCESS_SECRET must be at least 16 chars"),
+  PLATFORM_JWT_ACCESS_EXPIRES_IN: z.string().default("30m"),
+  PLATFORM_JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
   PORT: z.coerce.number().default(4000),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),

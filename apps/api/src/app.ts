@@ -32,6 +32,8 @@ import { countersRouter } from "./modules/counters/counters.routes";
 import { reportsRouter } from "./modules/reports/reports.routes";
 import { notificationsRouter } from "./modules/notifications/notifications.routes";
 import { settingsRouter } from "./modules/settings/settings.routes";
+import { platformRouter } from "./modules/platform/platform.routes";
+import { platformExchangeRouter } from "./modules/platform/platform-exchange.routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 export const app = express();
@@ -48,6 +50,7 @@ app.use("/api", rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: tr
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 app.use("/api/auth", authRouter);
+app.use("/api/auth", platformExchangeRouter);
 app.use("/api/branches", branchesRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/roles", rolesRouter);
@@ -77,6 +80,7 @@ app.use("/api/counters", countersRouter);
 app.use("/api/reports", reportsRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/settings", settingsRouter);
+app.use("/api/platform", platformRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

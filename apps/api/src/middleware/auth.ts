@@ -21,10 +21,11 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       include: {
         role: { include: { rolePermissions: { include: { permission: true } } } },
         userBranches: { select: { branchId: true } },
+        tenant: { select: { isActive: true } },
       },
     });
 
-    if (!user || !user.isActive) {
+    if (!user || !user.isActive || !user.tenant.isActive) {
       throw new UnauthorizedError("Account is inactive or no longer exists");
     }
 
