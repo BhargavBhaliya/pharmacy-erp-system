@@ -18,6 +18,15 @@ function dateRange(fromStr?: string, toStr?: string) {
   return { from, to };
 }
 
+// Shared "bucket by day/month/year" key+label for the time-based groupBy options across
+// sales, purchases, and expenses reports.
+function dateBucket(date: Date, granularity: "day" | "month" | "year"): string {
+  const iso = date.toISOString();
+  if (granularity === "year") return iso.slice(0, 4);
+  if (granularity === "month") return iso.slice(0, 7);
+  return iso.slice(0, 10);
+}
+
 function respond(req: import("express").Request, res: import("express").Response, rows: Record<string, unknown>[], columns: string[], filename: string) {
   if (req.query.format === "csv") {
     res.setHeader("Content-Type", "text/csv");
@@ -31,7 +40,7 @@ const salesReportQuery = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   branchId: z.string().optional(),
-  groupBy: z.enum(["day", "product", "category", "user", "customer", "doctor"]).default("day"),
+  groupBy: z.enum(["day", "month", "year", "product", "category", "user", "customer", "doctor"]).default("day"),
 });
 
 reportsRouter.get("/sales", requirePermission("reports", "view"), async (req, res, next) => {
@@ -60,8 +69,10 @@ reportsRouter.get("/sales", requirePermission("reports", "view"), async (req, re
     for (const sale of sales) {
       const total = Number(sale.totalAmount);
       switch (q.groupBy) {
-        case "day": {
-          const key = sale.saleDate.toISOString().slice(0, 10);
+        case "day":
+        case "month":
+        case "year": {
+          const key = dateBucket(sale.saleDate, q.groupBy);
           bump(key, key, total, sale.items.reduce((s, i) => s + i.quantity, 0), true);
           break;
         }
@@ -110,7 +121,7 @@ const purchaseReportQuery = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
   branchId: z.string().optional(),
-  groupBy: z.enum(["day", "product", "supplier"]).default("day"),
+  groupBy: z.enum(["day", "month", "year", "product", "supplier"]).default("day"),
 });
 
 reportsRouter.get("/purchases", requirePermission("reports", "view"), async (req, res, next) => {
@@ -132,8 +143,8 @@ reportsRouter.get("/purchases", requirePermission("reports", "view"), async (req
     };
 
     for (const purchase of purchases) {
-      if (q.groupBy === "day") {
-        const key = purchase.purchaseDate.toISOString().slice(0, 10);
+      if (q.groupBy === "day" || q.groupBy === "month" || q.groupBy === "year") {
+        const key = dateBucket(purchase.purchaseDate, q.groupBy);
         bump(key, key, Number(purchase.totalAmount), purchase.items.reduce((s, i) => s + i.quantity, 0));
       } else if (q.groupBy === "supplier") {
         bump(purchase.supplierId, purchase.supplier.name, Number(purchase.totalAmount), purchase.items.reduce((s, i) => s + i.quantity, 0));
@@ -149,6 +160,68 @@ reportsRouter.get("/purchases", requirePermission("reports", "view"), async (req
       .sort((a, b) => b.totalAmount - a.totalAmount);
 
     respond(req, res, rows, ["key", "label", "totalAmount", "quantity"], `purchases-by-${q.groupBy}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const expenseReportQuery = z.object({
+  from: z.string().optional(),
+  to: z.string().optional(),
+  branchId: z.string().optional(),
+  groupBy: z.enum(["day", "month", "year", "category", "branch", "paymentMode"]).default("day"),
+});
+
+reportsRouter.get("/expenses", requirePermission("reports", "view"), async (req, res, next) => {
+  try {
+    const q = expenseReportQuery.parse(req.query);
+    const { from, to } = dateRange(q.from, q.to);
+
+    const expenses = await prisma.expense.findMany({
+      where: {
+        tenantId: req.user!.tenantId,
+        branchId: branchScope(req, q.branchId),
+        status: "APPROVED",
+        expenseDate: { gte: from, lte: to },
+      },
+      include: { category: true, branch: { select: { id: true, name: true } } },
+    });
+
+    const buckets = new Map<string, { label: string; totalAmount: number; count: number }>();
+    const bump = (key: string, label: string, amount: number) => {
+      const b = buckets.get(key) ?? { label, totalAmount: 0, count: 0 };
+      b.totalAmount += amount;
+      b.count += 1;
+      buckets.set(key, b);
+    };
+
+    for (const expense of expenses) {
+      const amount = Number(expense.amount);
+      switch (q.groupBy) {
+        case "day":
+        case "month":
+        case "year": {
+          const key = dateBucket(expense.expenseDate, q.groupBy);
+          bump(key, key, amount);
+          break;
+        }
+        case "category":
+          bump(expense.categoryId, expense.category.name, amount);
+          break;
+        case "branch":
+          bump(expense.branchId, expense.branch.name, amount);
+          break;
+        case "paymentMode":
+          bump(expense.paymentMode, expense.paymentMode, amount);
+          break;
+      }
+    }
+
+    const rows = Array.from(buckets.entries())
+      .map(([key, v]) => ({ key, label: v.label, totalAmount: round2(v.totalAmount), expenseCount: v.count }))
+      .sort((a, b) => b.totalAmount - a.totalAmount);
+
+    respond(req, res, rows, ["key", "label", "totalAmount", "expenseCount"], `expenses-by-${q.groupBy}`);
   } catch (err) {
     next(err);
   }
