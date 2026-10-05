@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { isAxiosError } from "axios";
 import { platformApi } from "../api/platformClient";
 
@@ -163,6 +163,10 @@ export function StoreDetailPage() {
 
   return (
     <div>
+      <Link to="/platform/stores" className="d-inline-block mb-3 small text-decoration-none">
+        ← Back to stores
+      </Link>
+
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
           <h3 className="mb-0">
