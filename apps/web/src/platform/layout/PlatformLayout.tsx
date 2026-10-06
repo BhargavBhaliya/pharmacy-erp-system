@@ -1,9 +1,11 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { usePlatformAuth } from "../auth/PlatformAuthContext";
+import { platformApi } from "../api/platformClient";
 
 const NAV_ITEMS = [
   { to: "/platform/stores", label: "Stores" },
-  { to: "/platform/billing", label: "Billing & Subscriptions" },
+  { to: "/platform/billing", label: "Billing & Subscriptions", badgeKey: "overdue" as const },
 ];
 
 // Mirrors the tenant AppLayout's left-sidebar shape exactly, but visually distinct (dark
@@ -11,6 +13,17 @@ const NAV_ITEMS = [
 // "mode" — platform admin vs. inside a store — the current browser tab is in.
 export function PlatformLayout() {
   const { admin, logout } = usePlatformAuth();
+  const location = useLocation();
+  const [overdueCount, setOverdueCount] = useState(0);
+
+  // Refetched on every navigation so renewing a store's plan (from Billing or a store's own
+  // detail page) clears the badge without needing a manual page reload.
+  useEffect(() => {
+    platformApi
+      .get<{ data: { isOverdue: boolean }[] }>("/billing-overview")
+      .then((res) => setOverdueCount(res.data.data.filter((s) => s.isOverdue).length))
+      .catch(() => undefined);
+  }, [location.pathname]);
 
   return (
     <div className="d-flex vh-100">
@@ -22,10 +35,11 @@ export function PlatformLayout() {
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `d-block px-2 py-2 rounded mb-1 text-decoration-none ${isActive ? "bg-primary text-white" : "text-white-50"}`
+                `d-flex justify-content-between align-items-center px-2 py-2 rounded mb-1 text-decoration-none ${isActive ? "bg-primary text-white" : "text-white-50"}`
               }
             >
-              {item.label}
+              <span>{item.label}</span>
+              {item.badgeKey === "overdue" && overdueCount > 0 && <span className="badge text-bg-danger rounded-pill">{overdueCount}</span>}
             </NavLink>
           ))}
         </div>
