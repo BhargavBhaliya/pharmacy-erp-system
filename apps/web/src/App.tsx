@@ -22,6 +22,14 @@ import { PaymentsPage } from "./pages/PaymentsPage";
 import { CashSessionsPage } from "./pages/CashSessionsPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { UsersPage } from "./pages/UsersPage";
+import { RolesPage } from "./pages/RolesPage";
+import { DoctorsPage } from "./pages/DoctorsPage";
+import { PrescriptionsPage } from "./pages/PrescriptionsPage";
+import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
+import { StockTransfersPage } from "./pages/StockTransfersPage";
+import { AuditLogsPage } from "./pages/AuditLogsPage";
+import { BarcodeLabelsPage } from "./pages/BarcodeLabelsPage";
 import { SaleInvoicePrintPage } from "./pages/SaleInvoicePrintPage";
 import { ImpersonationLandingPage } from "./pages/ImpersonationLandingPage";
 import { PlatformAuthProvider } from "./platform/auth/PlatformAuthContext";
@@ -167,6 +175,70 @@ export function App() {
                 element={
                   <RequirePermission module="settings" action="view">
                     <SettingsPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/users"
+                element={
+                  <RequirePermission module="users" action="view">
+                    <UsersPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/roles"
+                element={
+                  <RequirePermission module="roles" action="view">
+                    <RolesPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/doctors"
+                element={
+                  <RequirePermission module="doctors" action="view">
+                    <DoctorsPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/prescriptions"
+                element={
+                  <RequirePermission module="prescriptions" action="view">
+                    <PrescriptionsPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/purchase-orders"
+                element={
+                  <RequirePermission module="purchase" action="view">
+                    <PurchaseOrdersPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/stock-transfers"
+                element={
+                  <RequirePermission module="stock_transfer" action="view">
+                    <StockTransfersPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/audit-logs"
+                element={
+                  <RequirePermission module="audit_logs" action="view">
+                    <AuditLogsPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/barcode-labels"
+                element={
+                  <RequirePermission module="products" action="view">
+                    <BarcodeLabelsPage />
                   </RequirePermission>
                 }
               />
