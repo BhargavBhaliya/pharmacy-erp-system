@@ -74,6 +74,8 @@ model Tenant {
   supplierPayments  SupplierPayment[]
   cashSessions      CashSession[]
   notifications     Notification[]
+  subscription      StoreSubscription?
+  storePayments     StorePayment[]
 
   @@map("tenants")
 }
@@ -114,6 +116,59 @@ model PlatformRefreshToken {
 
   @@index([platformAdminId])
   @@map("platform_refresh_tokens")
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  EXPIRED
+  CANCELLED
+}
+
+enum BillingCycle {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+// What a store pays the Platform Admin to use this CRM. One row per tenant — the Platform
+// Admin sets the plan/amount/due date manually (this is bookkeeping for the admin, not a
+// payment gateway integration).
+model StoreSubscription {
+  id           String             @id @default(cuid())
+  tenantId     String             @unique
+  planName     String             @default("Standard")
+  billingCycle BillingCycle       @default(MONTHLY)
+  amount       Decimal            @db.Decimal(12, 2)
+  status       SubscriptionStatus @default(TRIAL)
+  startDate    DateTime           @default(now())
+  nextDueDate  DateTime?
+  notes        String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("store_subscriptions")
+}
+
+// Payment history ledger for a store's subscription — recorded by the Platform Admin when a
+// store pays. Recording a payment also pushes StoreSubscription.nextDueDate forward.
+model StorePayment {
+  id              String      @id @default(cuid())
+  tenantId        String
+  amount          Decimal     @db.Decimal(12, 2)
+  paymentDate     DateTime    @default(now())
+  paymentMode     PaymentMode
+  referenceNumber String?
+  notes           String?
+  createdAt       DateTime    @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, paymentDate])
+  @@map("store_payments")
 }
 
 model Branch {

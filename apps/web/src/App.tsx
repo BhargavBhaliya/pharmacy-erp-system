@@ -31,6 +31,7 @@ import { PlatformLoginPage } from "./platform/pages/PlatformLoginPage";
 import { StoreListPage } from "./platform/pages/StoreListPage";
 import { CreateStorePage } from "./platform/pages/CreateStorePage";
 import { StoreDetailPage } from "./platform/pages/StoreDetailPage";
+import { BillingOverviewPage } from "./platform/pages/BillingOverviewPage";
 
 export function App() {
   return (
@@ -193,6 +194,7 @@ export function App() {
                 <Route path="stores" element={<StoreListPage />} />
                 <Route path="stores/new" element={<CreateStorePage />} />
                 <Route path="stores/:id" element={<StoreDetailPage />} />
+                <Route path="billing" element={<BillingOverviewPage />} />
               </Route>
             </Route>
           </Route>

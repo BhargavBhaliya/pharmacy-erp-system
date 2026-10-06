@@ -13,7 +13,19 @@ interface Store {
   createdAt: string;
   userCount: number;
   branchCount: number;
+  subscriptionStatus: string;
+  nextDueDate: string | null;
+  isOverdue: boolean;
 }
+
+const SUBSCRIPTION_BADGE: Record<string, string> = {
+  TRIAL: "text-bg-info",
+  ACTIVE: "text-bg-success",
+  PAST_DUE: "text-bg-warning",
+  EXPIRED: "text-bg-danger",
+  CANCELLED: "text-bg-secondary",
+  NO_PLAN: "text-bg-light border",
+};
 
 export function StoreListPage() {
   const navigate = useNavigate();
@@ -74,24 +86,23 @@ export function StoreListPage() {
               <th>Store Code</th>
               <th>Business Name</th>
               <th>Owner</th>
-              <th>Email</th>
               <th>Users</th>
               <th>Branches</th>
               <th>Status</th>
-              <th>Created</th>
+              <th>Billing</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={8} className="text-center text-muted py-4">
+                <td colSpan={7} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
             )}
             {!loading && stores.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center text-muted py-4">
+                <td colSpan={7} className="text-center text-muted py-4">
                   No stores found.
                 </td>
               </tr>
@@ -101,7 +112,6 @@ export function StoreListPage() {
                 <td className="fw-semibold">{s.storeCode}</td>
                 <td>{s.businessName}</td>
                 <td>{s.ownerName ?? "—"}</td>
-                <td>{s.email ?? "—"}</td>
                 <td>{s.userCount}</td>
                 <td>{s.branchCount}</td>
                 <td>
@@ -109,7 +119,17 @@ export function StoreListPage() {
                     {s.isActive ? "Active" : "Inactive"}
                   </span>
                 </td>
-                <td>{new Date(s.createdAt).toLocaleDateString()}</td>
+                <td>
+                  <span className={`badge ${SUBSCRIPTION_BADGE[s.subscriptionStatus] ?? "text-bg-light border"}`}>
+                    {s.subscriptionStatus.replace("_", " ")}
+                  </span>
+                  {s.nextDueDate && (
+                    <div className={`small mt-1 ${s.isOverdue ? "text-danger fw-semibold" : "text-muted"}`}>
+                      {s.isOverdue ? "Overdue: " : "Due "}
+                      {new Date(s.nextDueDate).toLocaleDateString()}
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

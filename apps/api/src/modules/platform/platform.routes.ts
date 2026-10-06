@@ -8,8 +8,10 @@ import {
   createStoreSchema,
   listStoresQuerySchema,
   platformLoginSchema,
+  recordPaymentSchema,
   resetUserPasswordSchema,
   updateStoreSchema,
+  upsertSubscriptionSchema,
 } from "./platform.validation";
 import * as platformAuthService from "./platform-auth.service";
 import * as platformService from "./platform.service";
@@ -174,6 +176,53 @@ platformRouter.get("/stores/:tenantId/activity", async (req, res, next) => {
   try {
     const result = await platformService.getStoreActivity(req.params.tenantId);
     res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- Subscription & payments ---------------------------------------------------------------
+
+platformRouter.get("/billing-overview", async (_req, res, next) => {
+  try {
+    const data = await platformService.getBillingOverview();
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformRouter.get("/stores/:tenantId/subscription", async (req, res, next) => {
+  try {
+    const subscription = await platformService.getStoreSubscription(req.params.tenantId);
+    res.json({ data: subscription });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformRouter.put("/stores/:tenantId/subscription", validateBody(upsertSubscriptionSchema), async (req, res, next) => {
+  try {
+    const subscription = await platformService.upsertStoreSubscription(req.params.tenantId, req.body);
+    res.json({ data: subscription });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformRouter.get("/stores/:tenantId/payments", async (req, res, next) => {
+  try {
+    const payments = await platformService.listStorePayments(req.params.tenantId);
+    res.json({ data: payments });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformRouter.post("/stores/:tenantId/payments", validateBody(recordPaymentSchema), async (req, res, next) => {
+  try {
+    const payment = await platformService.recordStorePayment(req.params.tenantId, req.body);
+    res.status(201).json({ data: payment });
   } catch (err) {
     next(err);
   }

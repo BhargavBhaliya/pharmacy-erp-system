@@ -46,3 +46,24 @@ export const resetUserPasswordSchema = z.object({
   newPassword: z.string().min(8, "Password must be at least 8 characters").optional(),
 });
 export type ResetUserPasswordInput = z.infer<typeof resetUserPasswordSchema>;
+
+export const upsertSubscriptionSchema = z.object({
+  planName: z.string().min(1).max(100).default("Standard"),
+  billingCycle: z.enum(["MONTHLY", "QUARTERLY", "YEARLY"]).default("MONTHLY"),
+  amount: z.number().min(0),
+  status: z.enum(["TRIAL", "ACTIVE", "PAST_DUE", "EXPIRED", "CANCELLED"]).default("TRIAL"),
+  nextDueDate: z.coerce.date().optional(),
+  notes: z.string().optional(),
+});
+export type UpsertSubscriptionInput = z.infer<typeof upsertSubscriptionSchema>;
+
+export const recordPaymentSchema = z.object({
+  amount: z.number().positive(),
+  paymentMode: z.enum(["CASH", "UPI", "CARD", "BANK_TRANSFER", "CHEQUE", "CREDIT", "OTHER"]),
+  referenceNumber: z.string().optional(),
+  notes: z.string().optional(),
+  // When true (default), pushes the subscription's nextDueDate forward by one billing cycle
+  // and marks it ACTIVE — the normal "they paid, extend them" flow.
+  extendDueDate: z.boolean().default(true),
+});
+export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;

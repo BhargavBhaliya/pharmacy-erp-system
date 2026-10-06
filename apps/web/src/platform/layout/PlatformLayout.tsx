@@ -1,29 +1,47 @@
-import { Link, Outlet } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import { usePlatformAuth } from "../auth/PlatformAuthContext";
 
-// Deliberately visually distinct from the tenant AppLayout (no sidebar, different accent
-// color) so there is never any ambiguity about which "mode" — platform admin vs. inside a
-// store — the current browser tab is in.
+const NAV_ITEMS = [
+  { to: "/platform/stores", label: "Stores" },
+  { to: "/platform/billing", label: "Billing & Subscriptions" },
+];
+
+// Mirrors the tenant AppLayout's left-sidebar shape exactly, but visually distinct (dark
+// accent throughout, different brand text) so there is never any ambiguity about which
+// "mode" — platform admin vs. inside a store — the current browser tab is in.
 export function PlatformLayout() {
   const { admin, logout } = usePlatformAuth();
 
   return (
-    <div className="min-vh-100 bg-light">
-      <nav className="navbar navbar-dark bg-dark px-4">
-        <Link to="/platform/stores" className="navbar-brand mb-0 h1">
-          Pharmacy ERP — Platform Admin
-        </Link>
-        <div className="d-flex align-items-center gap-3 text-white-50 small">
-          <span>{admin?.name}</span>
-          <span>{admin?.email}</span>
-          <button className="btn btn-outline-light btn-sm" onClick={() => logout()}>
+    <div className="d-flex vh-100">
+      <nav className="bg-dark text-white d-flex flex-column p-3" style={{ width: 240, flexShrink: 0, height: "100vh" }}>
+        <div className="fs-5 fw-semibold mb-4">Pharmacy ERP<div className="small text-white-50 fw-normal">Platform Admin</div></div>
+        <div className="flex-grow-1 overflow-auto">
+          {NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `d-block px-2 py-2 rounded mb-1 text-decoration-none ${isActive ? "bg-primary text-white" : "text-white-50"}`
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+        <div className="border-top border-secondary pt-3 small">
+          <div className="fw-semibold">{admin?.name}</div>
+          <div className="text-white-50">{admin?.email}</div>
+          <button className="btn btn-outline-light btn-sm mt-2 w-100" onClick={() => logout()}>
             Log out
           </button>
         </div>
       </nav>
-      <div className="container-fluid p-4">
-        <Outlet />
-      </div>
+      <main className="flex-grow-1 overflow-auto bg-light">
+        <div className="container-fluid p-4">
+          <Outlet />
+        </div>
+      </main>
     </div>
   );
 }

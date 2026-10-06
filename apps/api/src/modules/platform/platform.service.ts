@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { Request } from "express";
+import type { BillingCycle } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { hashPassword } from "../../lib/password";
 import { seedDefaultRolesForTenant } from "../../lib/tenantSetup";
@@ -8,7 +9,7 @@ import { generateRefreshToken, hashRefreshToken, refreshTokenExpiryDate, signAcc
 import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
 import { recordPlatformAudit } from "./platform-audit";
 import { createExchangeCode } from "./impersonation-store";
-import type { CreateStoreInput, ListStoresQuery, UpdateStoreInput } from "./platform.validation";
+import type { CreateStoreInput, ListStoresQuery, RecordPaymentInput, UpdateStoreInput, UpsertSubscriptionInput } from "./platform.validation";
 
 // Deliberately a near-duplicate of auth.service.ts's registerBusiness rather than a call
 // through to it: registerBusiness's signature/return shape is a public contract already
@@ -66,13 +67,14 @@ export async function listStores(query: ListStoresQuery) {
     prisma.tenant.count({ where }),
     prisma.tenant.findMany({
       where,
-      include: { _count: { select: { users: true, branches: true } } },
+      include: { _count: { select: { users: true, branches: true } }, subscription: true },
       orderBy: { createdAt: "desc" },
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
     }),
   ]);
 
+  const now = new Date();
   const data = tenants.map((t) => ({
     id: t.id,
     storeCode: t.storeCode,
@@ -82,6 +84,9 @@ export async function listStores(query: ListStoresQuery) {
     phone: t.phone,
     isActive: t.isActive,
     createdAt: t.createdAt,
+    subscriptionStatus: t.subscription?.status ?? "NO_PLAN",
+    nextDueDate: t.subscription?.nextDueDate ?? null,
+    isOverdue: Boolean(t.subscription?.nextDueDate && t.subscription.nextDueDate < now && t.subscription.status !== "CANCELLED"),
     userCount: t._count.users,
     branchCount: t._count.branches,
   }));
@@ -218,4 +223,87 @@ export async function getStoreActivity(tenantId: string) {
     stats: { userCount: tenant._count.users, branchCount: tenant._count.branches },
     recentAuditLogs,
   };
+}
+
+// --- Subscription & payments ---------------------------------------------------------------
+
+export async function getStoreSubscription(tenantId: string) {
+  await requireStore(tenantId);
+  return prisma.storeSubscription.findUnique({ where: { tenantId } });
+}
+
+export async function upsertStoreSubscription(tenantId: string, input: UpsertSubscriptionInput) {
+  await requireStore(tenantId);
+  return prisma.storeSubscription.upsert({
+    where: { tenantId },
+    create: { tenantId, ...input },
+    update: input,
+  });
+}
+
+function addBillingCycle(date: Date, cycle: BillingCycle): Date {
+  const next = new Date(date);
+  if (cycle === "MONTHLY") next.setMonth(next.getMonth() + 1);
+  else if (cycle === "QUARTERLY") next.setMonth(next.getMonth() + 3);
+  else next.setFullYear(next.getFullYear() + 1);
+  return next;
+}
+
+export async function recordStorePayment(tenantId: string, input: RecordPaymentInput) {
+  await requireStore(tenantId);
+
+  const payment = await prisma.storePayment.create({
+    data: {
+      tenantId,
+      amount: input.amount,
+      paymentMode: input.paymentMode,
+      referenceNumber: input.referenceNumber,
+      notes: input.notes,
+    },
+  });
+
+  if (input.extendDueDate) {
+    const subscription = await prisma.storeSubscription.findUnique({ where: { tenantId } });
+    if (subscription) {
+      const base = subscription.nextDueDate && subscription.nextDueDate > new Date() ? subscription.nextDueDate : new Date();
+      await prisma.storeSubscription.update({
+        where: { tenantId },
+        data: { nextDueDate: addBillingCycle(base, subscription.billingCycle), status: "ACTIVE" },
+      });
+    }
+  }
+
+  return payment;
+}
+
+export async function listStorePayments(tenantId: string) {
+  await requireStore(tenantId);
+  return prisma.storePayment.findMany({ where: { tenantId }, orderBy: { paymentDate: "desc" } });
+}
+
+// One row per store across the whole platform — lets the admin scan 50+ stores for who's
+// overdue without opening each one individually.
+export async function getBillingOverview() {
+  const tenants = await prisma.tenant.findMany({
+    select: { id: true, storeCode: true, businessName: true, isActive: true, subscription: true },
+    orderBy: { businessName: "asc" },
+  });
+
+  const now = new Date();
+  return tenants.map((t) => ({
+    id: t.id,
+    storeCode: t.storeCode,
+    businessName: t.businessName,
+    isActive: t.isActive,
+    planName: t.subscription?.planName ?? null,
+    billingCycle: t.subscription?.billingCycle ?? null,
+    amount: t.subscription?.amount ?? null,
+    status: t.subscription?.status ?? "NO_PLAN",
+    nextDueDate: t.subscription?.nextDueDate ?? null,
+    isOverdue: Boolean(
+      t.subscription?.nextDueDate &&
+        t.subscription.nextDueDate < now &&
+        t.subscription.status !== "CANCELLED"
+    ),
+  }));
 }
