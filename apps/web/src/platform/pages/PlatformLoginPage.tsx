@@ -11,7 +11,7 @@ export function PlatformLoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (!loading && admin) return <Navigate to="/platform/stores" replace />;
+  if (!loading && admin) return <Navigate to="/platform/dashboard" replace />;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -19,7 +19,7 @@ export function PlatformLoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
-      navigate("/platform/stores", { replace: true });
+      navigate("/platform/dashboard", { replace: true });
     } catch (err) {
       const message = isAxiosError(err) ? err.response?.data?.error?.message : undefined;
       setError(message ?? "Login failed. Please check your credentials.");

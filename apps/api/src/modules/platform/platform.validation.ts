@@ -6,6 +6,18 @@ export const platformLoginSchema = z.object({
 });
 export type PlatformLoginInput = z.infer<typeof platformLoginSchema>;
 
+export const updatePlatformAdminSchema = z.object({
+  name: z.string().min(2).max(200).optional(),
+  email: z.string().email().optional(),
+});
+export type UpdatePlatformAdminInput = z.infer<typeof updatePlatformAdminSchema>;
+
+export const changePlatformAdminPasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8, "Password must be at least 8 characters"),
+});
+export type ChangePlatformAdminPasswordInput = z.infer<typeof changePlatformAdminPasswordSchema>;
+
 export const createStoreSchema = z.object({
   businessName: z.string().min(2).max(200),
   ownerName: z.string().min(2).max(200),

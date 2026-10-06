@@ -307,3 +307,76 @@ export async function getBillingOverview() {
     ),
   }));
 }
+
+// --- Dashboard summary ------------------------------------------------------------------
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+export async function getDashboardSummary() {
+  const now = new Date();
+
+  const [totalStores, activeStores, subscriptions, totalCollectedAgg, recentPayments] = await Promise.all([
+    prisma.tenant.count(),
+    prisma.tenant.count({ where: { isActive: true } }),
+    prisma.storeSubscription.findMany({ select: { status: true, amount: true, nextDueDate: true } }),
+    prisma.storePayment.aggregate({ _sum: { amount: true } }),
+    prisma.storePayment.findMany({
+      orderBy: { paymentDate: "desc" },
+      take: 10,
+      include: { tenant: { select: { businessName: true, storeCode: true } } },
+    }),
+  ]);
+
+  const subscriptionStats: Record<string, number> = { TRIAL: 0, ACTIVE: 0, PAST_DUE: 0, EXPIRED: 0, CANCELLED: 0 };
+  let pendingDues = 0;
+  let overdueStoreCount = 0;
+  for (const s of subscriptions) {
+    subscriptionStats[s.status] = (subscriptionStats[s.status] ?? 0) + 1;
+    const isOverdue = s.nextDueDate && s.nextDueDate < now && s.status !== "CANCELLED";
+    if (isOverdue) {
+      pendingDues += Number(s.amount);
+      overdueStoreCount += 1;
+    }
+  }
+  const noPlanCount = totalStores - subscriptions.length;
+
+  // Last 6 calendar months, including months with zero collection, for the trend chart.
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+  const paymentsForChart = await prisma.storePayment.findMany({
+    where: { paymentDate: { gte: sixMonthsAgo } },
+    select: { amount: true, paymentDate: true },
+  });
+  const monthlyMap = new Map<string, number>();
+  for (const p of paymentsForChart) {
+    const key = p.paymentDate.toISOString().slice(0, 7);
+    monthlyMap.set(key, (monthlyMap.get(key) ?? 0) + Number(p.amount));
+  }
+  const monthlyCollection: { month: string; amount: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = d.toISOString().slice(0, 7);
+    monthlyCollection.push({ month: key, amount: round2(monthlyMap.get(key) ?? 0) });
+  }
+  const collectedThisMonth = monthlyMap.get(now.toISOString().slice(0, 7)) ?? 0;
+
+  return {
+    storeStats: { total: totalStores, active: activeStores, inactive: totalStores - activeStores },
+    subscriptionStats: { ...subscriptionStats, NO_PLAN: noPlanCount },
+    collection: {
+      totalCollected: round2(Number(totalCollectedAgg._sum.amount ?? 0)),
+      collectedThisMonth: round2(collectedThisMonth),
+      pendingDues: round2(pendingDues),
+      overdueStoreCount,
+    },
+    monthlyCollection,
+    recentPayments: recentPayments.map((p) => ({
+      id: p.id,
+      amount: p.amount,
+      paymentDate: p.paymentDate,
+      storeName: p.tenant.businessName,
+      storeCode: p.tenant.storeCode,
+    })),
+  };
+}

@@ -5,11 +5,13 @@ import { authenticatePlatformAdmin } from "../../middleware/platformAuth";
 import { UnauthorizedError } from "../../lib/errors";
 import { env } from "../../config/env";
 import {
+  changePlatformAdminPasswordSchema,
   createStoreSchema,
   listStoresQuerySchema,
   platformLoginSchema,
   recordPaymentSchema,
   resetUserPasswordSchema,
+  updatePlatformAdminSchema,
   updateStoreSchema,
   upsertSubscriptionSchema,
 } from "./platform.validation";
@@ -72,6 +74,34 @@ platformRouter.post("/auth/logout", async (req, res, next) => {
 platformRouter.get("/auth/me", authenticatePlatformAdmin, (req, res) => {
   res.json(req.platformAdmin);
 });
+
+platformRouter.put(
+  "/auth/me",
+  authenticatePlatformAdmin,
+  validateBody(updatePlatformAdminSchema),
+  async (req, res, next) => {
+    try {
+      const admin = await platformAuthService.updatePlatformAdminProfile(req.platformAdmin!.id, req.body);
+      res.json({ id: admin.id, name: admin.name, email: admin.email });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+platformRouter.post(
+  "/auth/change-password",
+  authenticatePlatformAdmin,
+  validateBody(changePlatformAdminPasswordSchema),
+  async (req, res, next) => {
+    try {
+      await platformAuthService.changePlatformAdminPassword(req.platformAdmin!.id, req.body);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // --- Store management (all behind authenticatePlatformAdmin) -----------------------------
 
@@ -223,6 +253,17 @@ platformRouter.post("/stores/:tenantId/payments", validateBody(recordPaymentSche
   try {
     const payment = await platformService.recordStorePayment(req.params.tenantId, req.body);
     res.status(201).json({ data: payment });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- Dashboard -------------------------------------------------------------------------
+
+platformRouter.get("/dashboard", async (_req, res, next) => {
+  try {
+    const summary = await platformService.getDashboardSummary();
+    res.json({ data: summary });
   } catch (err) {
     next(err);
   }

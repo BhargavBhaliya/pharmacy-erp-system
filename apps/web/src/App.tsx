@@ -33,6 +33,8 @@ import { CreateStorePage } from "./platform/pages/CreateStorePage";
 import { StoreDetailPage } from "./platform/pages/StoreDetailPage";
 import { BillingOverviewPage } from "./platform/pages/BillingOverviewPage";
 import { NotificationsPage } from "./platform/pages/NotificationsPage";
+import { PlatformDashboardPage } from "./platform/pages/PlatformDashboardPage";
+import { PlatformSettingsPage } from "./platform/pages/PlatformSettingsPage";
 
 export function App() {
   return (
@@ -191,12 +193,14 @@ export function App() {
             <Route path="login" element={<PlatformLoginPage />} />
             <Route element={<RequirePlatformAuth />}>
               <Route element={<PlatformLayout />}>
-                <Route index element={<Navigate to="/platform/stores" replace />} />
+                <Route index element={<Navigate to="/platform/dashboard" replace />} />
                 <Route path="stores" element={<StoreListPage />} />
                 <Route path="stores/new" element={<CreateStorePage />} />
                 <Route path="stores/:id" element={<StoreDetailPage />} />
                 <Route path="billing" element={<BillingOverviewPage />} />
                 <Route path="notifications" element={<NotificationsPage />} />
+                <Route path="dashboard" element={<PlatformDashboardPage />} />
+                <Route path="settings" element={<PlatformSettingsPage />} />
               </Route>
             </Route>
           </Route>

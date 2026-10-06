@@ -12,6 +12,7 @@ interface PlatformAuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const PlatformAuthContext = createContext<PlatformAuthContextValue | undefined>(undefined);
@@ -58,7 +59,7 @@ export function PlatformAuthProvider({ children }: { children: ReactNode }) {
     setAdmin(null);
   }
 
-  const value = useMemo(() => ({ admin, loading, login, logout }), [admin, loading]);
+  const value = useMemo(() => ({ admin, loading, login, logout, refreshProfile: loadProfile }), [admin, loading]);
 
   return <PlatformAuthContext.Provider value={value}>{children}</PlatformAuthContext.Provider>;
 }

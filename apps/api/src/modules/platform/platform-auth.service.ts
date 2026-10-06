@@ -1,13 +1,13 @@
 import { prisma } from "../../lib/prisma";
-import { verifyPassword } from "../../lib/password";
+import { hashPassword, verifyPassword } from "../../lib/password";
 import {
   generatePlatformRefreshToken,
   hashPlatformRefreshToken,
   platformRefreshTokenExpiryDate,
   signPlatformAccessToken,
 } from "../../lib/platformJwt";
-import { UnauthorizedError } from "../../lib/errors";
-import type { PlatformLoginInput } from "./platform.validation";
+import { ConflictError, NotFoundError, UnauthorizedError } from "../../lib/errors";
+import type { ChangePlatformAdminPasswordInput, PlatformLoginInput, UpdatePlatformAdminInput } from "./platform.validation";
 
 // Same anti-timing-enumeration trick as auth.service.ts's login() — duplicated rather than
 // imported, since these are two independent auth systems and a shared constant would be an
@@ -78,4 +78,25 @@ export async function platformLogout(rawToken: string): Promise<void> {
   await prisma.platformRefreshToken
     .updateMany({ where: { tokenHash, revokedAt: null }, data: { revokedAt: new Date() } })
     .catch(() => undefined);
+}
+
+export async function updatePlatformAdminProfile(adminId: string, input: UpdatePlatformAdminInput) {
+  if (input.email) {
+    const existing = await prisma.platformAdmin.findUnique({ where: { email: input.email } });
+    if (existing && existing.id !== adminId) throw new ConflictError("An admin with this email already exists");
+  }
+  return prisma.platformAdmin.update({ where: { id: adminId }, data: input });
+}
+
+export async function changePlatformAdminPassword(adminId: string, input: ChangePlatformAdminPasswordInput): Promise<void> {
+  const admin = await prisma.platformAdmin.findUnique({ where: { id: adminId } });
+  if (!admin) throw new NotFoundError("Admin not found");
+
+  const valid = await verifyPassword(input.currentPassword, admin.passwordHash);
+  if (!valid) throw new UnauthorizedError("Current password is incorrect");
+
+  const passwordHash = await hashPassword(input.newPassword);
+  await prisma.platformAdmin.update({ where: { id: adminId }, data: { passwordHash } });
+  // Force re-login everywhere else after a password change, same as the tenant-user flow.
+  await prisma.platformRefreshToken.updateMany({ where: { platformAdminId: adminId, revokedAt: null }, data: { revokedAt: new Date() } });
 }

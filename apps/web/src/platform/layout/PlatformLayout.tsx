@@ -4,9 +4,11 @@ import { usePlatformAuth } from "../auth/PlatformAuthContext";
 import { platformApi } from "../api/platformClient";
 
 const NAV_ITEMS = [
+  { to: "/platform/dashboard", label: "Dashboard" },
   { to: "/platform/stores", label: "Stores" },
   { to: "/platform/notifications", label: "Notifications", badgeKey: "overdue" as const },
   { to: "/platform/billing", label: "Billing & Subscriptions" },
+  { to: "/platform/settings", label: "Settings" },
 ];
 
 // Mirrors the tenant AppLayout's left-sidebar shape exactly, but visually distinct (dark
