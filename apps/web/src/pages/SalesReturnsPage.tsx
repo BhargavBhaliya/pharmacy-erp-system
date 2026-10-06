@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -26,36 +27,32 @@ interface ReturnRow {
 
 export function SalesReturnsPage() {
   const { hasPermission } = useAuth();
-  const [sales, setSales] = useState<Sale[]>([]);
+  const queryClient = useQueryClient();
   const [saleId, setSaleId] = useState("");
-  const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [itemSearch, setItemSearch] = useState("");
   const [saleItemId, setSaleItemId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [reason, setReason] = useState("");
-  const [returns, setReturns] = useState<ReturnRow[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: ReturnRow[] }>("/sales-returns");
-    setReturns(res.data.data);
-    setLoading(false);
-  }
+  const { data: sales = [] } = useQuery({
+    queryKey: ["sales"],
+    queryFn: async () => (await api.get<{ data: Sale[] }>("/sales")).data.data,
+  });
+
+  const { data: returns = [], isLoading } = useQuery({
+    queryKey: ["sales-returns"],
+    queryFn: async () => (await api.get<{ data: ReturnRow[] }>("/sales-returns")).data.data,
+  });
+
+  const { data: saleItems = [] } = useQuery({
+    queryKey: ["sale-items", saleId],
+    queryFn: async () => (await api.get(`/sales/${saleId}`)).data.data.items as SaleItem[],
+    enabled: !!saleId,
+  });
 
   useEffect(() => {
-    api.get<{ data: Sale[] }>("/sales").then((res) => setSales(res.data.data));
-    load();
-  }, []);
-
-  useEffect(() => {
-    if (saleId) {
-      api.get(`/sales/${saleId}`).then((res) => setSaleItems(res.data.data.items));
-    } else {
-      setSaleItems([]);
-    }
     setSaleItemId("");
     setItemSearch("");
   }, [saleId]);
@@ -73,29 +70,40 @@ export function SalesReturnsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemSearch, saleItems]);
 
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await api.post("/sales-returns", { saleId, items: [{ saleItemId, quantity }], reason: reason || undefined });
+  const createMutation = useMutation({
+    mutationFn: (payload: { saleId: string; items: { saleItemId: string; quantity: number }[]; reason?: string }) =>
+      api.post("/sales-returns", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sales-returns"] });
       setShowForm(false);
       setSaleId("");
       setQuantity(1);
       setReason("");
-      await load();
-    } catch (err) {
+      setError(null);
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create return");
-    }
+    },
+  });
+
+  function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    createMutation.mutate({ saleId, items: [{ saleItemId, quantity }], reason: reason || undefined });
   }
 
-  async function doAction(id: string, action: "approve" | "reject") {
-    setError(null);
-    try {
-      await api.put(`/sales-returns/${id}/${action}`);
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : `Failed to ${action}`);
-    }
+  const actionMutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "approve" | "reject" }) => api.put(`/sales-returns/${id}/${action}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sales-returns"] });
+      setError(null);
+    },
+    onError: (err, variables) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : `Failed to ${variables.action}`);
+    },
+  });
+
+  function doAction(id: string, action: "approve" | "reject") {
+    actionMutation.mutate({ id, action });
   }
 
   const statusBadge = (status: string) => {
@@ -176,7 +184,7 @@ export function SalesReturnsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={6} className="text-center text-muted py-4">
                   Loading...

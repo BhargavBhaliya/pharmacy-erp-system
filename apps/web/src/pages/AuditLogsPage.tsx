@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 
 interface AuditLogRow {
@@ -12,15 +12,10 @@ interface AuditLogRow {
 }
 
 export function AuditLogsPage() {
-  const [logs, setLogs] = useState<AuditLogRow[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.get<{ data: AuditLogRow[] }>("/audit-logs").then((res) => {
-      setLogs(res.data.data);
-      setLoading(false);
-    });
-  }, []);
+  const { data: logs = [], isLoading } = useQuery({
+    queryKey: ["audit-logs"],
+    queryFn: async () => (await api.get<{ data: AuditLogRow[] }>("/audit-logs")).data.data,
+  });
 
   return (
     <div>
@@ -37,14 +32,14 @@ export function AuditLogsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={5} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
             )}
-            {!loading && logs.length === 0 && (
+            {!isLoading && logs.length === 0 && (
               <tr>
                 <td colSpan={5} className="text-center text-muted py-4">
                   No audit events yet.

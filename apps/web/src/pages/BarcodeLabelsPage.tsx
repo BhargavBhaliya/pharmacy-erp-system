@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 
 interface ProductLite {
@@ -33,14 +34,14 @@ function Label({ value, name, mrp }: { value: string; name: string; mrp: string 
 }
 
 export function BarcodeLabelsPage() {
-  const [products, setProducts] = useState<ProductLite[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [copies, setCopies] = useState(1);
   const [sheet, setSheet] = useState<{ value: string; name: string; mrp: string }[]>([]);
 
-  useEffect(() => {
-    api.get<{ data: ProductLite[] }>("/products", { params: { pageSize: 200 } }).then((res) => setProducts(res.data.data));
-  }, []);
+  const { data: products = [] } = useQuery({
+    queryKey: ["products", "barcode-lookup"],
+    queryFn: async () => (await api.get<{ data: ProductLite[] }>("/products", { params: { pageSize: 200 } })).data.data,
+  });
 
   function addToSheet() {
     const product = products.find((p) => p.id === selectedId);

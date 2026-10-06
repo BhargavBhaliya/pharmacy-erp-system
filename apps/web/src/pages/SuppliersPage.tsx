@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -18,34 +19,32 @@ const emptyForm = { name: "", contactPerson: "", phone: "", gstin: "", creditLim
 
 export function SuppliersPage() {
   const { hasPermission } = useAuth();
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: Supplier[] }>("/suppliers");
-    setSuppliers(res.data.data);
-    setLoading(false);
-  }
+  const { data: suppliers = [], isLoading } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: async () => (await api.get<{ data: Supplier[] }>("/suppliers")).data.data,
+  });
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await api.post("/suppliers", form);
+  const createMutation = useMutation({
+    mutationFn: (payload: typeof emptyForm) => api.post("/suppliers", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
       setShowForm(false);
       setForm(emptyForm);
-      await load();
-    } catch (err) {
+      setError(null);
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create supplier");
-    }
+    },
+  });
+
+  function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    createMutation.mutate(form);
   }
 
   return (
@@ -88,8 +87,8 @@ export function SuppliersPage() {
               <input type="number" className="form-control" value={form.creditDays} onChange={(e) => setForm({ ...form, creditDays: Number(e.target.value) })} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save supplier
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Saving..." : "Save supplier"}
           </button>
         </form>
       )}
@@ -107,7 +106,7 @@ export function SuppliersPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={6} className="text-center text-muted py-4">
                   Loading...

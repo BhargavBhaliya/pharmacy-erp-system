@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -12,36 +13,36 @@ interface Branch {
   isActive: boolean;
 }
 
+const emptyForm = { name: "", address: "", gstin: "", contactNumber: "" };
+
 export function BranchesPage() {
   const { hasPermission } = useAuth();
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", address: "", gstin: "", contactNumber: "" });
+  const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: Branch[] }>("/branches");
-    setBranches(res.data.data);
-    setLoading(false);
-  }
+  const { data: branches = [], isLoading } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await api.post("/branches", form);
+  const createMutation = useMutation({
+    mutationFn: (payload: typeof emptyForm) => api.post("/branches", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["branches"] });
       setShowForm(false);
-      setForm({ name: "", address: "", gstin: "", contactNumber: "" });
-      await load();
-    } catch (err) {
+      setForm(emptyForm);
+      setError(null);
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create branch");
-    }
+    },
+  });
+
+  function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    createMutation.mutate(form);
   }
 
   return (
@@ -76,8 +77,8 @@ export function BranchesPage() {
               <input className="form-control" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save branch
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Saving..." : "Save branch"}
           </button>
         </form>
       )}
@@ -93,14 +94,14 @@ export function BranchesPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={4} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
             )}
-            {!loading && branches.length === 0 && (
+            {!isLoading && branches.length === 0 && (
               <tr>
                 <td colSpan={4} className="text-center text-muted py-4">
                   No branches yet.

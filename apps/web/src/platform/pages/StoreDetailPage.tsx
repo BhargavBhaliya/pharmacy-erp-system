@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { platformApi } from "../api/platformClient";
 
 interface StoreDetail {
@@ -91,164 +92,172 @@ const DETAIL_FIELDS: { key: keyof StoreDetail; label: string }[] = [
 
 export function StoreDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [store, setStore] = useState<StoreDetail | null>(null);
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<Record<string, string>>({});
-  const [users, setUsers] = useState<StoreUser[]>([]);
-  const [activity, setActivity] = useState<AuditLogRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [savingDetails, setSavingDetails] = useState(false);
-  const [togglingActive, setTogglingActive] = useState(false);
-  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
   const [lastGeneratedPassword, setLastGeneratedPassword] = useState<{ userEmail: string; password: string } | null>(null);
-  const [impersonatingUserId, setImpersonatingUserId] = useState<string | null>(null);
 
-  const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [subForm, setSubForm] = useState({ planName: "Standard", billingCycle: "MONTHLY", amount: "0", status: "TRIAL", nextDueDate: "", notes: "" });
-  const [savingSubscription, setSavingSubscription] = useState(false);
-  const [payments, setPayments] = useState<Payment[]>([]);
   const [paymentForm, setPaymentForm] = useState({ amount: "", paymentMode: "CASH", referenceNumber: "", notes: "", extendDueDate: true });
-  const [recordingPayment, setRecordingPayment] = useState(false);
 
-  async function load() {
-    if (!id) return;
-    setLoading(true);
-    const [storeRes, usersRes, activityRes, subRes, paymentsRes] = await Promise.all([
-      platformApi.get<{ data: StoreDetail }>(`/stores/${id}`),
-      platformApi.get<{ data: StoreUser[] }>(`/stores/${id}/users`),
-      platformApi.get<{ data: { recentAuditLogs: AuditLogRow[] } }>(`/stores/${id}/activity`),
-      platformApi.get<{ data: Subscription | null }>(`/stores/${id}/subscription`),
-      platformApi.get<{ data: Payment[] }>(`/stores/${id}/payments`),
-    ]);
-    setStore(storeRes.data.data);
-    setForm(
-      Object.fromEntries(DETAIL_FIELDS.map(({ key }) => [key, (storeRes.data.data[key] as string | null) ?? ""]))
-    );
-    setUsers(usersRes.data.data);
-    setActivity(activityRes.data.data.recentAuditLogs);
-    setSubscription(subRes.data.data);
-    if (subRes.data.data) {
-      const s = subRes.data.data;
-      setSubForm({
-        planName: s.planName,
-        billingCycle: s.billingCycle,
-        amount: s.amount,
-        status: s.status,
-        nextDueDate: s.nextDueDate ? s.nextDueDate.slice(0, 10) : "",
-        notes: s.notes ?? "",
-      });
+  const storeQuery = useQuery({
+    queryKey: ["platform", "store", id, "detail"],
+    queryFn: async () => (await platformApi.get<{ data: StoreDetail }>(`/stores/${id}`)).data.data,
+    enabled: !!id,
+  });
+  const store = storeQuery.data;
+
+  const { data: users = [] } = useQuery({
+    queryKey: ["platform", "store", id, "users"],
+    queryFn: async () => (await platformApi.get<{ data: StoreUser[] }>(`/stores/${id}/users`)).data.data,
+    enabled: !!id,
+  });
+
+  const { data: activity = [] } = useQuery({
+    queryKey: ["platform", "store", id, "activity"],
+    queryFn: async () => (await platformApi.get<{ data: { recentAuditLogs: AuditLogRow[] } }>(`/stores/${id}/activity`)).data.data.recentAuditLogs,
+    enabled: !!id,
+  });
+
+  const { data: subscription = null } = useQuery({
+    queryKey: ["platform", "store", id, "subscription"],
+    queryFn: async () => (await platformApi.get<{ data: Subscription | null }>(`/stores/${id}/subscription`)).data.data,
+    enabled: !!id,
+  });
+
+  const { data: payments = [] } = useQuery({
+    queryKey: ["platform", "store", id, "payments"],
+    queryFn: async () => (await platformApi.get<{ data: Payment[] }>(`/stores/${id}/payments`)).data.data,
+    enabled: !!id,
+  });
+
+  // Keep the edit form in sync with the server copy whenever it actually changes (initial load,
+  // or after a successful save triggers a refetch) — not on every background revalidation tick.
+  useEffect(() => {
+    if (store) {
+      setForm(Object.fromEntries(DETAIL_FIELDS.map(({ key }) => [key, (store[key] as string | null) ?? ""])));
     }
-    setPayments(paymentsRes.data.data);
-    setLoading(false);
-  }
+  }, [store]);
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-
-  async function handleSaveDetails() {
-    if (!id) return;
-    setError(null);
-    setSavingDetails(true);
-    try {
-      await platformApi.put(`/stores/${id}`, form);
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save store details");
-    } finally {
-      setSavingDetails(false);
+    if (subscription) {
+      setSubForm({
+        planName: subscription.planName,
+        billingCycle: subscription.billingCycle,
+        amount: subscription.amount,
+        status: subscription.status,
+        nextDueDate: subscription.nextDueDate ? subscription.nextDueDate.slice(0, 10) : "",
+        notes: subscription.notes ?? "",
+      });
     }
-  }
+  }, [subscription]);
 
-  async function handleToggleActive() {
-    if (!id || !store) return;
-    if (store.isActive && !window.confirm("Deactivate this store? Every user there will be locked out immediately.")) return;
-    setError(null);
-    setTogglingActive(true);
-    try {
-      await platformApi.post(`/stores/${id}/${store.isActive ? "deactivate" : "activate"}`);
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to update store status");
-    } finally {
-      setTogglingActive(false);
-    }
-  }
+  const saveDetailsMutation = useMutation({
+    mutationFn: (payload: Record<string, string>) => platformApi.put(`/stores/${id}`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "detail"] });
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "activity"] });
+    },
+    onError: (err) => setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save store details"),
+  });
 
-  async function handleResetPassword(user: StoreUser) {
-    if (!id) return;
-    setError(null);
-    setResettingUserId(user.id);
-    try {
-      const res = await platformApi.post<{ data: { generatedPassword?: string } }>(`/stores/${id}/users/${user.id}/reset-password`, {});
+  const toggleActiveMutation = useMutation({
+    mutationFn: () => platformApi.post(`/stores/${id}/${store?.isActive ? "deactivate" : "activate"}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "detail"] });
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "activity"] });
+    },
+    onError: (err) => setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to update store status"),
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: (user: StoreUser) => platformApi.post<{ data: { generatedPassword?: string } }>(`/stores/${id}/users/${user.id}/reset-password`, {}),
+    onSuccess: (res, user) => {
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "activity"] });
       if (res.data.data.generatedPassword) {
         setLastGeneratedPassword({ userEmail: user.email, password: res.data.data.generatedPassword });
       }
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to reset password");
-    } finally {
-      setResettingUserId(null);
-    }
-  }
+    },
+    onError: (err) => setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to reset password"),
+  });
 
-  async function handleImpersonate(user: StoreUser) {
-    if (!id) return;
-    setError(null);
-    setImpersonatingUserId(user.id);
-    try {
-      const res = await platformApi.post<{ data: { exchangeCode: string } }>(`/stores/${id}/users/${user.id}/impersonate`);
+  const impersonateMutation = useMutation({
+    mutationFn: (user: StoreUser) => platformApi.post<{ data: { exchangeCode: string } }>(`/stores/${id}/users/${user.id}/impersonate`),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "activity"] });
       window.open(`/impersonate-landing?code=${encodeURIComponent(res.data.data.exchangeCode)}`, "_blank");
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to access store");
-    } finally {
-      setImpersonatingUserId(null);
-    }
-  }
+    },
+    onError: (err) => setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to access store"),
+  });
 
-  async function handleSaveSubscription() {
-    if (!id) return;
-    setError(null);
-    setSavingSubscription(true);
-    try {
-      await platformApi.put(`/stores/${id}/subscription`, {
-        planName: subForm.planName,
-        billingCycle: subForm.billingCycle,
-        amount: Number(subForm.amount),
-        status: subForm.status,
-        nextDueDate: subForm.nextDueDate || undefined,
-        notes: subForm.notes || undefined,
-      });
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save subscription");
-    } finally {
-      setSavingSubscription(false);
-    }
-  }
+  const saveSubscriptionMutation = useMutation({
+    mutationFn: (payload: { planName: string; billingCycle: string; amount: number; status: string; nextDueDate?: string; notes?: string }) =>
+      platformApi.put(`/stores/${id}/subscription`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "activity"] });
+    },
+    onError: (err) => setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save subscription"),
+  });
 
-  async function handleRecordPayment() {
-    if (!id) return;
-    setError(null);
-    setRecordingPayment(true);
-    try {
-      await platformApi.post(`/stores/${id}/payments`, {
-        amount: Number(paymentForm.amount),
-        paymentMode: paymentForm.paymentMode,
-        referenceNumber: paymentForm.referenceNumber || undefined,
-        notes: paymentForm.notes || undefined,
-        extendDueDate: paymentForm.extendDueDate,
-      });
+  const recordPaymentMutation = useMutation({
+    mutationFn: (payload: { amount: number; paymentMode: string; referenceNumber?: string; notes?: string; extendDueDate: boolean }) =>
+      platformApi.post(`/stores/${id}/payments`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "payments"] });
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "activity"] });
       setPaymentForm({ amount: "", paymentMode: "CASH", referenceNumber: "", notes: "", extendDueDate: true });
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record payment");
-    } finally {
-      setRecordingPayment(false);
-    }
+    },
+    onError: (err) => setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record payment"),
+  });
+
+  function handleSaveDetails() {
+    setError(null);
+    saveDetailsMutation.mutate(form);
   }
 
-  if (loading || !store) return <div className="text-muted">Loading...</div>;
+  function handleToggleActive() {
+    if (!store) return;
+    if (store.isActive && !window.confirm("Deactivate this store? Every user there will be locked out immediately.")) return;
+    setError(null);
+    toggleActiveMutation.mutate();
+  }
+
+  function handleResetPassword(user: StoreUser) {
+    setError(null);
+    resetPasswordMutation.mutate(user);
+  }
+
+  function handleImpersonate(user: StoreUser) {
+    setError(null);
+    impersonateMutation.mutate(user);
+  }
+
+  function handleSaveSubscription() {
+    setError(null);
+    saveSubscriptionMutation.mutate({
+      planName: subForm.planName,
+      billingCycle: subForm.billingCycle,
+      amount: Number(subForm.amount),
+      status: subForm.status,
+      nextDueDate: subForm.nextDueDate || undefined,
+      notes: subForm.notes || undefined,
+    });
+  }
+
+  function handleRecordPayment() {
+    setError(null);
+    recordPaymentMutation.mutate({
+      amount: Number(paymentForm.amount),
+      paymentMode: paymentForm.paymentMode,
+      referenceNumber: paymentForm.referenceNumber || undefined,
+      notes: paymentForm.notes || undefined,
+      extendDueDate: paymentForm.extendDueDate,
+    });
+  }
+
+  if (storeQuery.isLoading || !store) return <div className="text-muted">Loading...</div>;
 
   return (
     <div>
@@ -265,8 +274,8 @@ export function StoreDetailPage() {
             {store.isActive ? "Active" : "Inactive"}
           </span>
         </div>
-        <button className={`btn ${store.isActive ? "btn-outline-danger" : "btn-outline-success"}`} disabled={togglingActive} onClick={handleToggleActive}>
-          {togglingActive ? "Working..." : store.isActive ? "Deactivate store" : "Activate store"}
+        <button className={`btn ${store.isActive ? "btn-outline-danger" : "btn-outline-success"}`} disabled={toggleActiveMutation.isPending} onClick={handleToggleActive}>
+          {toggleActiveMutation.isPending ? "Working..." : store.isActive ? "Deactivate store" : "Activate store"}
         </button>
       </div>
 
@@ -297,8 +306,8 @@ export function StoreDetailPage() {
                 </div>
               ))}
             </div>
-            <button className="btn btn-dark mt-3" style={{ width: 160 }} disabled={savingDetails} onClick={handleSaveDetails}>
-              {savingDetails ? "Saving..." : "Save details"}
+            <button className="btn btn-dark mt-3" style={{ width: 160 }} disabled={saveDetailsMutation.isPending} onClick={handleSaveDetails}>
+              {saveDetailsMutation.isPending ? "Saving..." : "Save details"}
             </button>
           </div>
 
@@ -327,18 +336,18 @@ export function StoreDetailPage() {
                       <div className="btn-group">
                         <button
                           className="btn btn-sm btn-outline-secondary"
-                          disabled={resettingUserId === u.id}
+                          disabled={resetPasswordMutation.isPending && resetPasswordMutation.variables?.id === u.id}
                           onClick={() => handleResetPassword(u)}
                         >
-                          {resettingUserId === u.id ? "..." : "Reset password"}
+                          {resetPasswordMutation.isPending && resetPasswordMutation.variables?.id === u.id ? "..." : "Reset password"}
                         </button>
                         <button
                           className="btn btn-sm btn-outline-primary"
-                          disabled={impersonatingUserId === u.id || !store.isActive}
+                          disabled={(impersonateMutation.isPending && impersonateMutation.variables?.id === u.id) || !store.isActive}
                           onClick={() => handleImpersonate(u)}
                           title={!store.isActive ? "Activate the store first" : "Opens the normal store app in a new tab, logged in as this user"}
                         >
-                          {impersonatingUserId === u.id ? "..." : "Access this store"}
+                          {impersonateMutation.isPending && impersonateMutation.variables?.id === u.id ? "..." : "Access this store"}
                         </button>
                       </div>
                     </td>
@@ -395,8 +404,8 @@ export function StoreDetailPage() {
                 <input className="form-control form-control-sm" value={subForm.notes} onChange={(e) => setSubForm({ ...subForm, notes: e.target.value })} />
               </div>
             </div>
-            <button className="btn btn-sm btn-dark" disabled={savingSubscription} onClick={handleSaveSubscription}>
-              {savingSubscription ? "Saving..." : subscription ? "Save plan" : "Set up plan"}
+            <button className="btn btn-sm btn-dark" disabled={saveSubscriptionMutation.isPending} onClick={handleSaveSubscription}>
+              {saveSubscriptionMutation.isPending ? "Saving..." : subscription ? "Save plan" : "Set up plan"}
             </button>
 
             <hr />
@@ -446,8 +455,8 @@ export function StoreDetailPage() {
                 </label>
               </div>
             </div>
-            <button className="btn btn-sm btn-success" disabled={recordingPayment || !paymentForm.amount} onClick={handleRecordPayment}>
-              {recordingPayment ? "Recording..." : "Record payment"}
+            <button className="btn btn-sm btn-success" disabled={recordPaymentMutation.isPending || !paymentForm.amount} onClick={handleRecordPayment}>
+              {recordPaymentMutation.isPending ? "Recording..." : "Record payment"}
             </button>
 
             {payments.length > 0 && (

@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -24,30 +25,38 @@ const emptyForm = { name: "", email: "", password: "", roleId: "", branchIds: []
 
 export function UsersPage() {
   const { hasPermission } = useAuth();
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [roles, setRoles] = useState<RoleOption[]>([]);
-  const [branches, setBranches] = useState<BranchOption[]>([]);
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const [usersRes, rolesRes, branchesRes] = await Promise.all([
-      api.get<{ data: UserRow[] }>("/users"),
-      api.get<{ data: RoleOption[] }>("/roles"),
-      api.get<{ data: BranchOption[] }>("/branches").catch(() => ({ data: { data: [] as BranchOption[] } })),
-    ]);
-    setUsers(usersRes.data.data);
-    setRoles(rolesRes.data.data);
-    setBranches(branchesRes.data.data);
-    setLoading(false);
-  }
+  const { data: users = [], isLoading } = useQuery({
+    queryKey: ["users"],
+    queryFn: async () => (await api.get<{ data: UserRow[] }>("/users")).data.data,
+  });
 
-  useEffect(() => {
-    load();
-  }, []);
+  const { data: roles = [] } = useQuery({
+    queryKey: ["roles"],
+    queryFn: async () => (await api.get<{ data: RoleOption[] }>("/roles")).data.data,
+  });
+
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: BranchOption[] }>("/branches").catch(() => ({ data: { data: [] as BranchOption[] } }))).data.data,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (payload: typeof emptyForm) => api.post("/users", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setShowForm(false);
+      setForm(emptyForm);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create user");
+    },
+  });
 
   function toggleBranch(id: string) {
     setForm((f) => ({
@@ -56,17 +65,9 @@ export function UsersPage() {
     }));
   }
 
-  async function handleCreate(e: FormEvent) {
+  function handleCreate(e: FormEvent) {
     e.preventDefault();
-    setError(null);
-    try {
-      await api.post("/users", form);
-      setShowForm(false);
-      setForm(emptyForm);
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create user");
-    }
+    createMutation.mutate(form);
   }
 
   return (
@@ -125,8 +126,8 @@ export function UsersPage() {
               ))}
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save user
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Saving..." : "Save user"}
           </button>
         </form>
       )}
@@ -143,7 +144,7 @@ export function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={5} className="text-center text-muted py-4">
                   Loading...

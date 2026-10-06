@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -46,11 +47,9 @@ interface LineItem {
 
 export function PurchasesPage() {
   const { hasPermission } = useAuth();
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [results, setResults] = useState<ProductLite[]>([]);
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [branchId, setBranchId] = useState("");
   const [supplierId, setSupplierId] = useState("");
@@ -59,33 +58,63 @@ export function PurchasesPage() {
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: Purchase[] }>("/purchases");
-    setPurchases(res.data.data);
-    setLoading(false);
-  }
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
 
-  useEffect(() => {
-    Promise.all([api.get<{ data: Branch[] }>("/branches"), api.get<{ data: Supplier[] }>("/suppliers")]).then(([b, s]) => {
-      setBranches(b.data.data);
-      setSuppliers(s.data.data);
-    });
-    load();
-  }, []);
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: async () => (await api.get<{ data: Supplier[] }>("/suppliers")).data.data,
+  });
+
+  const { data: purchases = [], isLoading } = useQuery({
+    queryKey: ["purchases"],
+    queryFn: async () => (await api.get<{ data: Purchase[] }>("/purchases")).data.data,
+  });
 
   useEffect(() => {
     if (search.trim().length < 2) {
-      setResults([]);
+      setDebouncedSearch("");
       return;
     }
-    const handle = setTimeout(() => {
-      api.get<{ data: ProductLite[] }>("/products", { params: { search, pageSize: 10 } }).then((res) => setResults(res.data.data));
-    }, 250);
+    const handle = setTimeout(() => setDebouncedSearch(search), 250);
     return () => clearTimeout(handle);
   }, [search]);
+
+  const { data: results = [] } = useQuery({
+    queryKey: ["products", debouncedSearch],
+    queryFn: async () => (await api.get<{ data: ProductLite[] }>("/products", { params: { search: debouncedSearch, pageSize: 10 } })).data.data,
+    enabled: debouncedSearch.trim().length >= 2,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (payload: { branchId: string; supplierId: string; supplierInvoiceNumber?: string; items: unknown[] }) => api.post("/purchases", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchases"] });
+      setShowForm(false);
+      setItems([]);
+      setSupplierInvoiceNumber("");
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record purchase");
+    },
+  });
+
+  const payMutation = useMutation({
+    mutationFn: ({ purchaseId, amount }: { purchaseId: string; amount: number }) => api.post(`/purchases/${purchaseId}/payments`, { amount, paymentMode: "CASH" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchases"] });
+      setPayingId(null);
+      setPayAmount(0);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record payment");
+    },
+  });
 
   function addLine(p: ProductLite) {
     setItems((prev) => [
@@ -104,7 +133,7 @@ export function PurchasesPage() {
       },
     ]);
     setSearch("");
-    setResults([]);
+    setDebouncedSearch("");
   }
 
   function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -118,35 +147,18 @@ export function PurchasesPage() {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
   }
 
-  async function handleCreate(e: FormEvent) {
+  function handleCreate(e: FormEvent) {
     e.preventDefault();
-    setError(null);
-    try {
-      await api.post("/purchases", {
-        branchId,
-        supplierId,
-        supplierInvoiceNumber: supplierInvoiceNumber || undefined,
-        items: items.map((i) => ({ ...i, expiryDate: new Date(i.expiryDate).toISOString() })),
-      });
-      setShowForm(false);
-      setItems([]);
-      setSupplierInvoiceNumber("");
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record purchase");
-    }
+    createMutation.mutate({
+      branchId,
+      supplierId,
+      supplierInvoiceNumber: supplierInvoiceNumber || undefined,
+      items: items.map((i) => ({ ...i, expiryDate: new Date(i.expiryDate).toISOString() })),
+    });
   }
 
-  async function handlePay(purchaseId: string) {
-    setError(null);
-    try {
-      await api.post(`/purchases/${purchaseId}/payments`, { amount: payAmount, paymentMode: "CASH" });
-      setPayingId(null);
-      setPayAmount(0);
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record payment");
-    }
+  function handlePay(purchaseId: string) {
+    payMutation.mutate({ purchaseId, amount: payAmount });
   }
 
   const statusBadge = (status: string) => {
@@ -279,8 +291,8 @@ export function PurchasesPage() {
             </table>
           </div>
           <div>
-            <button type="submit" className="btn btn-primary" style={{ width: 180 }} disabled={items.length === 0}>
-              Save & update stock
+            <button type="submit" className="btn btn-primary" style={{ width: 180 }} disabled={items.length === 0 || createMutation.isPending}>
+              {createMutation.isPending ? "Saving..." : "Save & update stock"}
             </button>
           </div>
         </form>
@@ -299,7 +311,7 @@ export function PurchasesPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={6} className="text-center text-muted py-4">
                   Loading...
@@ -321,8 +333,8 @@ export function PurchasesPage() {
                     payingId === p.id ? (
                       <div className="d-flex gap-1 justify-content-end">
                         <input type="number" className="form-control form-control-sm" style={{ width: 90 }} value={payAmount} onChange={(e) => setPayAmount(Number(e.target.value))} />
-                        <button className="btn btn-sm btn-primary" onClick={() => handlePay(p.id)}>
-                          Pay
+                        <button className="btn btn-sm btn-primary" onClick={() => handlePay(p.id)} disabled={payMutation.isPending}>
+                          {payMutation.isPending ? "Saving..." : "Pay"}
                         </button>
                       </div>
                     ) : (

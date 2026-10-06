@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { platformApi } from "../api/platformClient";
 import { Pagination } from "../components/Pagination";
 
@@ -32,37 +33,37 @@ const SUBSCRIPTION_BADGE: Record<string, string> = {
 
 export function StoreListPage() {
   const navigate = useNavigate();
-  const [stores, setStores] = useState<Store[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<"" | "true" | "false">("");
-  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
 
-  async function load(targetPage: number) {
-    setLoading(true);
-    const res = await platformApi.get<{ data: Store[]; pagination: { total: number } }>("/stores", {
-      params: {
-        ...(search ? { search } : {}),
-        ...(activeFilter ? { isActive: activeFilter } : {}),
-        page: targetPage,
-        pageSize: PAGE_SIZE,
-      },
-    });
-    setStores(res.data.data);
-    setTotal(res.data.pagination.total);
-    setPage(targetPage);
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    load(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter]);
+  const { data, isLoading } = useQuery({
+    queryKey: ["platform", "stores", search, activeFilter, page],
+    queryFn: async () =>
+      (
+        await platformApi.get<{ data: Store[]; pagination: { total: number } }>("/stores", {
+          params: {
+            ...(search ? { search } : {}),
+            ...(activeFilter ? { isActive: activeFilter } : {}),
+            page,
+            pageSize: PAGE_SIZE,
+          },
+        })
+      ).data,
+  });
+  const stores = data?.data ?? [];
+  const total = data?.pagination.total ?? 0;
 
   function handleSearch(e: FormEvent) {
     e.preventDefault();
-    load(1);
+    setSearch(searchInput);
+    setPage(1);
+  }
+
+  function handleActiveFilterChange(value: "" | "true" | "false") {
+    setActiveFilter(value);
+    setPage(1);
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -80,10 +81,15 @@ export function StoreListPage() {
         <input
           className="form-control"
           placeholder="Search by store code, business name, or email..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
         />
-        <select className="form-select" style={{ width: 150 }} value={activeFilter} onChange={(e) => setActiveFilter(e.target.value as typeof activeFilter)}>
+        <select
+          className="form-select"
+          style={{ width: 150 }}
+          value={activeFilter}
+          onChange={(e) => handleActiveFilterChange(e.target.value as "" | "true" | "false")}
+        >
           <option value="">All statuses</option>
           <option value="true">Active</option>
           <option value="false">Inactive</option>
@@ -93,7 +99,7 @@ export function StoreListPage() {
         </button>
       </form>
 
-      <div className="text-muted small mb-2">{loading ? "Loading..." : `${total} store(s) · page ${page} of ${totalPages}`}</div>
+      <div className="text-muted small mb-2">{isLoading ? "Loading..." : `${total} store(s) · page ${page} of ${totalPages}`}</div>
 
       <div className="card">
         <table className="table table-hover mb-0">
@@ -109,14 +115,14 @@ export function StoreListPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={7} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
             )}
-            {!loading && stores.length === 0 && (
+            {!isLoading && stores.length === 0 && (
               <tr>
                 <td colSpan={7} className="text-center text-muted py-4">
                   No stores found.
@@ -152,7 +158,7 @@ export function StoreListPage() {
         </table>
       </div>
 
-      <Pagination page={page} totalPages={totalPages} onPageChange={load} />
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 }

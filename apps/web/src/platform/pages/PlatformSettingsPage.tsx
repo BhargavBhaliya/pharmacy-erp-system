@@ -1,37 +1,49 @@
 import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation } from "@tanstack/react-query";
 import { platformApi } from "../api/platformClient";
 import { usePlatformAuth } from "../auth/PlatformAuthContext";
 
 export function PlatformSettingsPage() {
   const { admin, refreshProfile } = usePlatformAuth();
   const [profileForm, setProfileForm] = useState({ name: admin?.name ?? "", email: admin?.email ?? "" });
-  const [savingProfile, setSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
 
   const [pwForm, setPwForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
-  const [savingPassword, setSavingPassword] = useState(false);
   const [pwMessage, setPwMessage] = useState<string | null>(null);
   const [pwError, setPwError] = useState<string | null>(null);
 
-  async function handleSaveProfile(e: FormEvent) {
+  const saveProfileMutation = useMutation({
+    mutationFn: (payload: typeof profileForm) => platformApi.put("/auth/me", payload),
+    onSuccess: async () => {
+      await refreshProfile();
+      setProfileMessage("Saved.");
+    },
+    onError: (err) => {
+      setProfileError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save profile");
+    },
+  });
+
+  const changePasswordMutation = useMutation({
+    mutationFn: (payload: { currentPassword: string; newPassword: string }) => platformApi.post("/auth/change-password", payload),
+    onSuccess: () => {
+      setPwForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setPwMessage("Password changed. Any other signed-in sessions have been logged out.");
+    },
+    onError: (err) => {
+      setPwError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to change password");
+    },
+  });
+
+  function handleSaveProfile(e: FormEvent) {
     e.preventDefault();
     setProfileError(null);
     setProfileMessage(null);
-    setSavingProfile(true);
-    try {
-      await platformApi.put("/auth/me", profileForm);
-      await refreshProfile();
-      setProfileMessage("Saved.");
-    } catch (err) {
-      setProfileError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save profile");
-    } finally {
-      setSavingProfile(false);
-    }
+    saveProfileMutation.mutate(profileForm);
   }
 
-  async function handleChangePassword(e: FormEvent) {
+  function handleChangePassword(e: FormEvent) {
     e.preventDefault();
     setPwError(null);
     setPwMessage(null);
@@ -39,19 +51,10 @@ export function PlatformSettingsPage() {
       setPwError("New password and confirmation don't match");
       return;
     }
-    setSavingPassword(true);
-    try {
-      await platformApi.post("/auth/change-password", {
-        currentPassword: pwForm.currentPassword,
-        newPassword: pwForm.newPassword,
-      });
-      setPwForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
-      setPwMessage("Password changed. Any other signed-in sessions have been logged out.");
-    } catch (err) {
-      setPwError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to change password");
-    } finally {
-      setSavingPassword(false);
-    }
+    changePasswordMutation.mutate({
+      currentPassword: pwForm.currentPassword,
+      newPassword: pwForm.newPassword,
+    });
   }
 
   return (
@@ -82,8 +85,8 @@ export function PlatformSettingsPage() {
               onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
             />
 
-            <button type="submit" className="btn btn-dark" disabled={savingProfile} style={{ width: 140 }}>
-              {savingProfile ? "Saving..." : "Save"}
+            <button type="submit" className="btn btn-dark" disabled={saveProfileMutation.isPending} style={{ width: 140 }}>
+              {saveProfileMutation.isPending ? "Saving..." : "Save"}
             </button>
           </form>
         </div>
@@ -123,8 +126,8 @@ export function PlatformSettingsPage() {
               onChange={(e) => setPwForm({ ...pwForm, confirmPassword: e.target.value })}
             />
 
-            <button type="submit" className="btn btn-dark" disabled={savingPassword} style={{ width: 180 }}>
-              {savingPassword ? "Changing..." : "Change password"}
+            <button type="submit" className="btn btn-dark" disabled={changePasswordMutation.isPending} style={{ width: 180 }}>
+              {changePasswordMutation.isPending ? "Changing..." : "Change password"}
             </button>
           </form>
         </div>

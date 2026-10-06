@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -36,8 +37,7 @@ function endOfDay(d: Date) {
 
 export function SalesPage() {
   const { hasPermission } = useAuth();
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -64,31 +64,33 @@ export function SalesPage() {
     return {};
   }
 
-  async function load() {
-    setLoading(true);
-    const { from, to } = computeRange();
-    const res = await api.get<{ data: Sale[] }>("/sales", {
-      params: { ...(from ? { from: from.toISOString() } : {}), ...(to ? { to: to.toISOString() } : {}) },
-    });
-    setSales(res.data.data);
-    setLoading(false);
-  }
+  const { data: sales = [], isLoading } = useQuery({
+    queryKey: ["sales", filterMode, dayValue, monthValue],
+    queryFn: async () => {
+      const { from, to } = computeRange();
+      const res = await api.get<{ data: Sale[] }>("/sales", {
+        params: { ...(from ? { from: from.toISOString() } : {}), ...(to ? { to: to.toISOString() } : {}) },
+      });
+      return res.data.data;
+    },
+  });
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterMode, dayValue, monthValue]);
-
-  async function handleCancel(id: string) {
-    setError(null);
-    try {
-      await api.put(`/sales/${id}/cancel`, { cancelReason: reason });
+  const cancelMutation = useMutation({
+    mutationFn: ({ id, cancelReason }: { id: string; cancelReason: string }) =>
+      api.put(`/sales/${id}/cancel`, { cancelReason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
       setCancellingId(null);
       setReason("");
-      await load();
-    } catch (err) {
+      setError(null);
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to cancel sale");
-    }
+    },
+  });
+
+  function handleCancel(id: string) {
+    cancelMutation.mutate({ id, cancelReason: reason });
   }
 
   const statusBadge = (status: string) => (
@@ -144,7 +146,7 @@ export function SalesPage() {
       {error && <div className="alert alert-danger py-2">{error}</div>}
 
       <div className="d-flex justify-content-between align-items-center mb-2 text-muted small">
-        <span>{loading ? "Loading..." : `${sales.length} invoice(s)`}</span>
+        <span>{isLoading ? "Loading..." : `${sales.length} invoice(s)`}</span>
         <span className="fw-semibold fs-6 text-dark">Total: ₹{totalAmount.toFixed(2)}</span>
       </div>
 
@@ -163,7 +165,7 @@ export function SalesPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={8} className="text-center text-muted py-4">
                   Loading...

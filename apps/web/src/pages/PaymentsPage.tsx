@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -34,49 +35,61 @@ interface SupplierPayment {
 
 export function PaymentsPage() {
   const { hasPermission } = useAuth();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<"receipts" | "supplier">("receipts");
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ branchId: "", partyId: "", amount: 0, paymentMode: "CASH" });
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  async function load() {
-    const [r, s] = await Promise.all([api.get<{ data: Receipt[] }>("/receipts"), api.get<{ data: SupplierPayment[] }>("/supplier-payments")]);
-    setReceipts(r.data.data);
-    setSupplierPayments(s.data.data);
-  }
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
 
-  useEffect(() => {
-    Promise.all([api.get<{ data: Branch[] }>("/branches"), api.get<{ data: Customer[] }>("/customers"), api.get<{ data: Supplier[] }>("/suppliers")]).then(([b, c, s]) => {
-      setBranches(b.data.data);
-      setCustomers(c.data.data);
-      setSuppliers(s.data.data);
-    });
-    load();
-  }, []);
+  const { data: customers = [] } = useQuery({
+    queryKey: ["customers"],
+    queryFn: async () => (await api.get<{ data: Customer[] }>("/customers")).data.data,
+  });
 
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setInfo(null);
-    try {
-      const endpoint = tab === "receipts" ? "/receipts" : "/supplier-payments";
-      const partyKey = tab === "receipts" ? "customerId" : "supplierId";
-      const res = await api.post(endpoint, { branchId: form.branchId, [partyKey]: form.partyId, amount: form.amount, paymentMode: form.paymentMode });
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: async () => (await api.get<{ data: Supplier[] }>("/suppliers")).data.data,
+  });
+
+  const { data: receipts = [] } = useQuery({
+    queryKey: ["receipts"],
+    queryFn: async () => (await api.get<{ data: Receipt[] }>("/receipts")).data.data,
+  });
+
+  const { data: supplierPayments = [] } = useQuery({
+    queryKey: ["supplier-payments"],
+    queryFn: async () => (await api.get<{ data: SupplierPayment[] }>("/supplier-payments")).data.data,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (payload: { endpoint: string; body: Record<string, unknown> }) => api.post(payload.endpoint, payload.body),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["supplier-payments"] });
       if (res.data.unallocatedAmount > 0) {
         setInfo(`₹${res.data.unallocatedAmount} could not be applied — no more outstanding invoices.`);
       }
       setShowForm(false);
       setForm({ branchId: "", partyId: "", amount: 0, paymentMode: "CASH" });
-      await load();
-    } catch (err) {
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record payment");
-    }
+    },
+  });
+
+  function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setInfo(null);
+    const endpoint = tab === "receipts" ? "/receipts" : "/supplier-payments";
+    const partyKey = tab === "receipts" ? "customerId" : "supplierId";
+    createMutation.mutate({ endpoint, body: { branchId: form.branchId, [partyKey]: form.partyId, amount: form.amount, paymentMode: form.paymentMode } });
   }
 
   const parties = tab === "receipts" ? customers : suppliers;
@@ -148,8 +161,8 @@ export function PaymentsPage() {
             </div>
           </div>
           <div className="form-text">Automatically applied to the oldest outstanding invoices first (FIFO).</div>
-          <button type="submit" className="btn btn-primary mt-2" style={{ width: 160 }}>
-            Save
+          <button type="submit" className="btn btn-primary mt-2" style={{ width: 160 }} disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Saving..." : "Save"}
           </button>
         </form>
       )}

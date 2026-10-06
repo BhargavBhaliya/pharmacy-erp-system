@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 
 interface CatalogItem {
@@ -15,45 +16,41 @@ const TABS = [
 ] as const;
 
 export function CatalogPage() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]["key"]>("manufacturers");
-  const [items, setItems] = useState<CatalogItem[]>([]);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
   const tab = TABS.find((t) => t.key === activeTab)!;
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: CatalogItem[] }>(tab.endpoint);
-    setItems(res.data.data);
-    setLoading(false);
-  }
+  const { data: items = [], isLoading } = useQuery({
+    queryKey: ["catalog", activeTab],
+    queryFn: async () => (await api.get<{ data: CatalogItem[] }>(tab.endpoint)).data.data,
+  });
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await api.post(tab.endpoint, { name });
+  const createMutation = useMutation({
+    mutationFn: (payload: { name: string }) => api.post(tab.endpoint, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalog", activeTab] });
       setName("");
-      await load();
-    } catch (err) {
+      setError(null);
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create");
-    }
-  }
+    },
+  });
 
-  async function toggleActive(item: CatalogItem) {
-    if (item.isActive) {
-      await api.delete(`${tab.endpoint}/${item.id}`);
-    } else {
-      await api.put(`${tab.endpoint}/${item.id}`, { isActive: true });
-    }
-    await load();
+  const toggleActiveMutation = useMutation({
+    mutationFn: (item: CatalogItem) =>
+      item.isActive ? api.delete(`${tab.endpoint}/${item.id}`) : api.put(`${tab.endpoint}/${item.id}`, { isActive: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalog", activeTab] });
+    },
+  });
+
+  function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    createMutation.mutate({ name });
   }
 
   return (
@@ -87,7 +84,7 @@ export function CatalogPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={3} className="text-center text-muted py-3">
                   Loading...
@@ -103,7 +100,7 @@ export function CatalogPage() {
                   </span>
                 </td>
                 <td className="text-end">
-                  <button className="btn btn-sm btn-outline-secondary" onClick={() => toggleActive(item)}>
+                  <button className="btn btn-sm btn-outline-secondary" onClick={() => toggleActiveMutation.mutate(item)}>
                     {item.isActive ? "Deactivate" : "Activate"}
                   </button>
                 </td>

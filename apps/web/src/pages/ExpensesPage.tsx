@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -26,52 +27,68 @@ const emptyForm = { branchId: "", categoryId: "", amount: 0, paymentMode: "CASH"
 
 export function ExpensesPage() {
   const { hasPermission } = useAuth();
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const queryClient = useQueryClient();
   const [newCategoryName, setNewCategoryName] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const [expRes, catRes] = await Promise.all([api.get<{ data: Expense[] }>("/expenses"), api.get<{ data: Category[] }>("/expense-categories")]);
-    setExpenses(expRes.data.data);
-    setCategories(catRes.data.data);
-    setLoading(false);
-  }
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
 
-  useEffect(() => {
-    api.get<{ data: Branch[] }>("/branches").then((res) => setBranches(res.data.data));
-    load();
-  }, []);
+  const { data: categories = [] } = useQuery({
+    queryKey: ["expense-categories"],
+    queryFn: async () => (await api.get<{ data: Category[] }>("/expense-categories")).data.data,
+  });
 
-  async function addCategory(e: FormEvent) {
-    e.preventDefault();
-    if (!newCategoryName) return;
-    await api.post("/expense-categories", { name: newCategoryName });
-    setNewCategoryName("");
-    await load();
-  }
+  const { data: expenses = [], isLoading } = useQuery({
+    queryKey: ["expenses"],
+    queryFn: async () => (await api.get<{ data: Expense[] }>("/expenses")).data.data,
+  });
 
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await api.post("/expenses", form);
+  const addCategoryMutation = useMutation({
+    mutationFn: (name: string) => api.post("/expense-categories", { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expense-categories"] });
+      setNewCategoryName("");
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (payload: typeof emptyForm) => api.post("/expenses", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
       setShowForm(false);
       setForm(emptyForm);
-      await load();
-    } catch (err) {
+      setError(null);
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record expense");
-    }
+    },
+  });
+
+  const actionMutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "approve" | "reject" }) => api.put(`/expenses/${id}/${action}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+    },
+  });
+
+  function addCategory(e: FormEvent) {
+    e.preventDefault();
+    if (!newCategoryName) return;
+    addCategoryMutation.mutate(newCategoryName);
   }
 
-  async function doAction(id: string, action: "approve" | "reject") {
-    await api.put(`/expenses/${id}/${action}`);
-    await load();
+  function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    createMutation.mutate(form);
+  }
+
+  function doAction(id: string, action: "approve" | "reject") {
+    actionMutation.mutate({ id, action });
   }
 
   const statusBadge = (status: string) => {
@@ -143,8 +160,8 @@ export function ExpensesPage() {
               <input className="form-control" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save expense
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Saving..." : "Save expense"}
           </button>
         </form>
       )}
@@ -163,7 +180,7 @@ export function ExpensesPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={7} className="text-center text-muted py-4">
                   Loading...

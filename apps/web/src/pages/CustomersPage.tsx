@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -16,36 +17,37 @@ const emptyForm = { name: "", mobile: "", email: "", creditLimit: 0, creditDays:
 
 export function CustomersPage() {
   const { hasPermission } = useAuth();
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const queryClient = useQueryClient();
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: Customer[] }>("/customers", { params: search ? { search } : {} });
-    setCustomers(res.data.data);
-    setLoading(false);
-  }
+  // Cached per search term: revisiting the page (or clearing the search back to a term you
+  // already searched) shows the previous result instantly while it quietly revalidates, instead
+  // of a fresh loading spinner every time.
+  const { data: customers = [], isLoading } = useQuery({
+    queryKey: ["customers", search],
+    queryFn: async () => (await api.get<{ data: Customer[] }>("/customers", { params: search ? { search } : {} })).data.data,
+  });
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await api.post("/customers", form);
+  const createMutation = useMutation({
+    mutationFn: (payload: typeof emptyForm) => api.post("/customers", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       setShowForm(false);
       setForm(emptyForm);
-      await load();
-    } catch (err) {
+      setError(null);
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create customer");
-    }
+    },
+  });
+
+  function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    createMutation.mutate(form);
   }
 
   return (
@@ -64,10 +66,10 @@ export function CustomersPage() {
         style={{ maxWidth: 420 }}
         onSubmit={(e) => {
           e.preventDefault();
-          load();
+          setSearch(searchInput);
         }}
       >
-        <input className="form-control" placeholder="Search name or mobile..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input className="form-control" placeholder="Search name or mobile..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
         <button className="btn btn-outline-secondary" type="submit">
           Search
         </button>
@@ -98,8 +100,8 @@ export function CustomersPage() {
               <input type="number" className="form-control" value={form.creditDays} onChange={(e) => setForm({ ...form, creditDays: Number(e.target.value) })} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save customer
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Saving..." : "Save customer"}
           </button>
         </form>
       )}
@@ -116,7 +118,7 @@ export function CustomersPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={5} className="text-center text-muted py-4">
                   Loading...

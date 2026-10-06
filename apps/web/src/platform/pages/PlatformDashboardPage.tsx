@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { platformApi } from "../api/platformClient";
 
 interface DashboardSummary {
@@ -75,12 +75,16 @@ function StatusDonut({ stats }: { stats: Record<string, number> }) {
   );
 }
 
-export function PlatformDashboardPage() {
-  const [data, setData] = useState<DashboardSummary | null>(null);
+// The platform dashboard is the most-watched "real-time feel" page in the admin console, so it
+// polls in the background rather than only loading once on mount.
+const REFRESH_INTERVAL_MS = 60_000;
 
-  useEffect(() => {
-    platformApi.get<{ data: DashboardSummary }>("/dashboard").then((res) => setData(res.data.data));
-  }, []);
+export function PlatformDashboardPage() {
+  const { data } = useQuery({
+    queryKey: ["platform", "dashboard"],
+    queryFn: async () => (await platformApi.get<{ data: DashboardSummary }>("/dashboard")).data.data,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
 
   if (!data) return <div className="text-muted">Loading...</div>;
 

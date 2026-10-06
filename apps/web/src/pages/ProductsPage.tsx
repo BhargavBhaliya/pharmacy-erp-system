@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -40,42 +41,65 @@ const emptyBarcodes: string[] = [];
 
 export function ProductsPage() {
   const { hasPermission } = useAuth();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [manufacturers, setManufacturers] = useState<LookupItem[]>([]);
-  const [categories, setCategories] = useState<LookupItem[]>([]);
-  const [units, setUnits] = useState<LookupItem[]>([]);
+  const queryClient = useQueryClient();
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [barcodes, setBarcodes] = useState<string[]>(emptyBarcodes);
   const [barcodeInput, setBarcodeInput] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: Product[] }>("/products", { params: search ? { search } : {} });
-    setProducts(res.data.data);
-    setLoading(false);
-  }
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ["products", search],
+    queryFn: async () => (await api.get<{ data: Product[] }>("/products", { params: search ? { search } : {} })).data.data,
+  });
 
-  useEffect(() => {
-    Promise.all([
-      api.get<{ data: LookupItem[] }>("/manufacturers"),
-      api.get<{ data: LookupItem[] }>("/product-categories"),
-      api.get<{ data: LookupItem[] }>("/units"),
-    ]).then(([m, c, u]) => {
-      setManufacturers(m.data.data);
-      setCategories(c.data.data);
-      setUnits(u.data.data);
-    });
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { data: manufacturers = [] } = useQuery({
+    queryKey: ["manufacturers"],
+    queryFn: async () => (await api.get<{ data: LookupItem[] }>("/manufacturers")).data.data,
+  });
 
-  async function handleSearch(e: FormEvent) {
+  const { data: categories = [] } = useQuery({
+    queryKey: ["product-categories"],
+    queryFn: async () => (await api.get<{ data: LookupItem[] }>("/product-categories")).data.data,
+  });
+
+  const { data: units = [] } = useQuery({
+    queryKey: ["units"],
+    queryFn: async () => (await api.get<{ data: LookupItem[] }>("/units")).data.data,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (payload: Omit<typeof emptyForm, "manufacturerId" | "categoryId" | "unitId"> & {
+      manufacturerId?: string;
+      categoryId?: string;
+      unitId?: string;
+      barcodes: string[];
+    }) => api.post("/products", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      setShowForm(false);
+      setForm(emptyForm);
+      setBarcodes(emptyBarcodes);
+      setBarcodeInput("");
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create product");
+    },
+  });
+
+  function handleCreate(e: FormEvent) {
     e.preventDefault();
-    await load();
+    const payload = {
+      ...form,
+      manufacturerId: form.manufacturerId || undefined,
+      categoryId: form.categoryId || undefined,
+      unitId: form.unitId || undefined,
+      barcodes,
+    };
+    createMutation.mutate(payload);
   }
 
   function addBarcode(code: string) {
@@ -92,28 +116,6 @@ export function ProductsPage() {
     }
   }
 
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      const payload = {
-        ...form,
-        manufacturerId: form.manufacturerId || undefined,
-        categoryId: form.categoryId || undefined,
-        unitId: form.unitId || undefined,
-        barcodes,
-      };
-      await api.post("/products", payload);
-      setShowForm(false);
-      setForm(emptyForm);
-      setBarcodes(emptyBarcodes);
-      setBarcodeInput("");
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create product");
-    }
-  }
-
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -125,8 +127,15 @@ export function ProductsPage() {
         )}
       </div>
 
-      <form className="d-flex gap-2 mb-3" onSubmit={handleSearch} style={{ maxWidth: 420 }}>
-        <input className="form-control" placeholder="Search name, SKU, generic, barcode..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      <form
+        className="d-flex gap-2 mb-3"
+        style={{ maxWidth: 420 }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          setSearch(searchInput);
+        }}
+      >
+        <input className="form-control" placeholder="Search name, SKU, generic, barcode..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
         <button className="btn btn-outline-secondary" type="submit">
           Search
         </button>
@@ -258,8 +267,8 @@ export function ProductsPage() {
               )}
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save product
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Saving..." : "Save product"}
           </button>
         </form>
       )}
@@ -278,14 +287,14 @@ export function ProductsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={7} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
             )}
-            {!loading && products.length === 0 && (
+            {!isLoading && products.length === 0 && (
               <tr>
                 <td colSpan={7} className="text-center text-muted py-4">
                   No products found.

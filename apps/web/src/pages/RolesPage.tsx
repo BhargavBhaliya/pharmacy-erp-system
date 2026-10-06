@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 
 interface Permission {
@@ -17,27 +18,27 @@ interface RoleRow {
 }
 
 export function RolesPage() {
-  const [roles, setRoles] = useState<RoleRow[]>([]);
-  const [catalog, setCatalog] = useState<Permission[]>([]);
+  const queryClient = useQueryClient();
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [draftCodes, setDraftCodes] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const [rolesRes, catalogRes] = await Promise.all([
-      api.get<{ data: RoleRow[] }>("/roles"),
-      api.get<{ data: Permission[] }>("/roles/catalog"),
-    ]);
-    setRoles(rolesRes.data.data);
-    setCatalog(catalogRes.data.data);
-    setLoading(false);
-  }
+  const { data: roles = [], isLoading } = useQuery({
+    queryKey: ["roles"],
+    queryFn: async () => (await api.get<{ data: RoleRow[] }>("/roles")).data.data,
+  });
 
-  useEffect(() => {
-    load();
-  }, []);
+  const { data: catalog = [] } = useQuery({
+    queryKey: ["roles", "catalog"],
+    queryFn: async () => (await api.get<{ data: Permission[] }>("/roles/catalog")).data.data,
+  });
+
+  const savePermissionsMutation = useMutation({
+    mutationFn: ({ roleId, permissionCodes }: { roleId: string; permissionCodes: string[] }) =>
+      api.put(`/roles/${roleId}/permissions`, { permissionCodes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["roles"] });
+    },
+  });
 
   const modules = useMemo(() => Array.from(new Set(catalog.map((p) => p.module))), [catalog]);
 
@@ -55,15 +56,9 @@ export function RolesPage() {
     });
   }
 
-  async function save() {
+  function save() {
     if (!selectedRoleId) return;
-    setSaving(true);
-    try {
-      await api.put(`/roles/${selectedRoleId}/permissions`, { permissionCodes: Array.from(draftCodes) });
-      await load();
-    } finally {
-      setSaving(false);
-    }
+    savePermissionsMutation.mutate({ roleId: selectedRoleId, permissionCodes: Array.from(draftCodes) });
   }
 
   const selectedRole = roles.find((r) => r.id === selectedRoleId);
@@ -75,7 +70,7 @@ export function RolesPage() {
         <div className="col-md-3">
           <div className="card">
             <div className="list-group list-group-flush">
-              {loading && <div className="p-3 text-muted">Loading...</div>}
+              {isLoading && <div className="p-3 text-muted">Loading...</div>}
               {roles.map((r) => (
                 <button
                   key={r.id}
@@ -100,8 +95,8 @@ export function RolesPage() {
                   <strong>{selectedRole.name}</strong>
                   {selectedRole.isSystem && <span className="badge text-bg-light border ms-2">Default role</span>}
                 </div>
-                <button className="btn btn-primary btn-sm" disabled={saving} onClick={save}>
-                  {saving ? "Saving..." : "Save permissions"}
+                <button className="btn btn-primary btn-sm" disabled={savePermissionsMutation.isPending} onClick={save}>
+                  {savePermissionsMutation.isPending ? "Saving..." : "Save permissions"}
                 </button>
               </div>
               <div className="card-body" style={{ maxHeight: 520, overflowY: "auto" }}>

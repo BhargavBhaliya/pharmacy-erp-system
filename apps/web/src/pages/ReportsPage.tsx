@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 
 interface Branch {
@@ -59,7 +60,6 @@ function toMonthInput(d: Date) {
 
 export function ReportsPage() {
   const [reportKey, setReportKey] = useState<(typeof REPORT_TYPES)[number]["key"]>("sales");
-  const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState("");
   const [groupBy, setGroupBy] = useState("day");
   const [filterMode, setFilterMode] = useState<FilterMode>("month");
@@ -67,14 +67,13 @@ export function ReportsPage() {
   const [toDate, setToDate] = useState(toDateInput(new Date()));
   const [monthValue, setMonthValue] = useState(toMonthInput(new Date()));
   const [yearValue, setYearValue] = useState(String(new Date().getFullYear()));
-  const [rows, setRows] = useState<Row[]>([]);
-  const [loading, setLoading] = useState(true);
 
   const report = REPORT_TYPES.find((r) => r.key === reportKey)!;
 
-  useEffect(() => {
-    api.get<{ data: Branch[] }>("/branches").then((res) => setBranches(res.data.data));
-  }, []);
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
 
   // Switching report type resets groupBy to that report's first option so stale values
   // (e.g. "doctor" while looking at the Expense report) can't leak across.
@@ -116,21 +115,17 @@ export function ReportsPage() {
     return params;
   }
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: Row[] }>(report.endpoint, { params: buildParams() });
-    setRows(res.data.data);
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportKey, branchId, groupBy, filterMode, fromDate, toDate, monthValue, yearValue]);
+  // queryKey includes every filter that affects buildParams() so each combination caches
+  // separately and switching filters never shows a stale report under the wrong selection.
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: ["reports", reportKey, branchId, groupBy, filterMode, fromDate, toDate, monthValue, yearValue],
+    queryFn: async () => (await api.get<{ data: Row[] }>(report.endpoint, { params: buildParams() })).data.data,
+  });
 
   async function exportCsv() {
     // A plain window.open() wouldn't carry the Authorization header, so fetch it through the
-    // authenticated axios client as a blob and trigger the download manually.
+    // authenticated axios client as a blob and trigger the download manually. This is a file
+    // download, not cacheable page data, so it stays outside React Query.
     const res = await api.get(report.endpoint, { params: buildParams({ format: "csv" }), responseType: "blob" });
     const url = URL.createObjectURL(res.data as Blob);
     const link = document.createElement("a");
@@ -225,7 +220,7 @@ export function ReportsPage() {
       )}
 
       <div className="d-flex justify-content-between align-items-center mb-2 text-muted small">
-        <span>{loading ? "Loading..." : `${rows.length} row(s)`}</span>
+        <span>{isLoading ? "Loading..." : `${rows.length} row(s)`}</span>
         {rows.some((r) => r.totalAmount !== undefined) && <span className="fw-semibold fs-6 text-dark">Total: ₹{totalAmountSum.toFixed(2)}</span>}
       </div>
 
@@ -244,14 +239,14 @@ export function ReportsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={columns.length + 1} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
             )}
-            {!loading && rows.length === 0 && (
+            {!isLoading && rows.length === 0 && (
               <tr>
                 <td colSpan={columns.length + 1} className="text-center text-muted py-4">
                   No data for this selection.

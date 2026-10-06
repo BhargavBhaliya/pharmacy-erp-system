@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -16,34 +17,32 @@ const emptyForm = { name: "", specialization: "", hospitalClinic: "", phone: "" 
 
 export function DoctorsPage() {
   const { hasPermission } = useAuth();
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: Doctor[] }>("/doctors");
-    setDoctors(res.data.data);
-    setLoading(false);
-  }
+  const { data: doctors = [], isLoading } = useQuery({
+    queryKey: ["doctors"],
+    queryFn: async () => (await api.get<{ data: Doctor[] }>("/doctors")).data.data,
+  });
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await api.post("/doctors", form);
+  const createMutation = useMutation({
+    mutationFn: (payload: typeof emptyForm) => api.post("/doctors", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["doctors"] });
       setShowForm(false);
       setForm(emptyForm);
-      await load();
-    } catch (err) {
+      setError(null);
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create doctor");
-    }
+    },
+  });
+
+  function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    createMutation.mutate(form);
   }
 
   return (
@@ -78,8 +77,8 @@ export function DoctorsPage() {
               <input className="form-control" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save doctor
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Saving..." : "Save doctor"}
           </button>
         </form>
       )}
@@ -96,7 +95,7 @@ export function DoctorsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={5} className="text-center text-muted py-4">
                   Loading...

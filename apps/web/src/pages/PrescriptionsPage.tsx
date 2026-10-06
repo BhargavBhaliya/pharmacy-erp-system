@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -29,33 +30,53 @@ const emptyForm = { branchId: "", customerId: "", doctorId: "", medicineName: ""
 
 export function PrescriptionsPage() {
   const { hasPermission } = useAuth();
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: Prescription[] }>("/prescriptions");
-    setPrescriptions(res.data.data);
-    setLoading(false);
-  }
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
 
-  useEffect(() => {
-    Promise.all([api.get<{ data: Branch[] }>("/branches"), api.get<{ data: Customer[] }>("/customers"), api.get<{ data: Doctor[] }>("/doctors")]).then(([b, c, d]) => {
-      setBranches(b.data.data);
-      setCustomers(c.data.data);
-      setDoctors(d.data.data);
-    });
-    load();
-  }, []);
+  const { data: customers = [] } = useQuery({
+    queryKey: ["customers"],
+    queryFn: async () => (await api.get<{ data: Customer[] }>("/customers")).data.data,
+  });
 
-  async function handleSubmit(e: FormEvent) {
+  const { data: doctors = [] } = useQuery({
+    queryKey: ["doctors"],
+    queryFn: async () => (await api.get<{ data: Doctor[] }>("/doctors")).data.data,
+  });
+
+  const { data: prescriptions = [], isLoading } = useQuery({
+    queryKey: ["prescriptions"],
+    queryFn: async () => (await api.get<{ data: Prescription[] }>("/prescriptions")).data.data,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string | null;
+      payload: { branchId: string; customerId: string; doctorId?: string; items: { medicineName: string; dose?: string }[] };
+    }) => (id ? api.put(`/prescriptions/${id}`, payload) : api.post("/prescriptions", payload)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prescriptions"] });
+      setShowForm(false);
+      setEditingId(null);
+      setForm(emptyForm);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save prescription");
+    },
+  });
+
+  function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     const payload = {
@@ -64,19 +85,7 @@ export function PrescriptionsPage() {
       doctorId: form.doctorId || undefined,
       items: form.medicineName ? [{ medicineName: form.medicineName, dose: form.dose || undefined }] : [],
     };
-    try {
-      if (editingId) {
-        await api.put(`/prescriptions/${editingId}`, payload);
-      } else {
-        await api.post("/prescriptions", payload);
-      }
-      setShowForm(false);
-      setEditingId(null);
-      setForm(emptyForm);
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save prescription");
-    }
+    saveMutation.mutate({ id: editingId, payload });
   }
 
   function handleEdit(p: Prescription) {
@@ -174,7 +183,7 @@ export function PrescriptionsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={5} className="text-center text-muted py-4">
                   Loading...

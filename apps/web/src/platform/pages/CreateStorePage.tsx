@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { isAxiosError } from "axios";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { platformApi } from "../api/platformClient";
 
 function generatePassword(): string {
@@ -11,28 +12,32 @@ function generatePassword(): string {
 
 export function CreateStorePage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState({ businessName: "", ownerName: "", email: "", phone: "", password: "" });
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
-  async function handleSubmit(e: FormEvent) {
+  const createMutation = useMutation({
+    mutationFn: (payload: typeof form) =>
+      platformApi.post<{ tenant: { id: string } }>("/stores", {
+        businessName: payload.businessName,
+        ownerName: payload.ownerName,
+        email: payload.email,
+        phone: payload.phone || undefined,
+        password: payload.password,
+      }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["platform", "stores"] });
+      navigate(`/platform/stores/${res.data.tenant.id}`, { replace: true });
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create store");
+    },
+  });
+
+  function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setSubmitting(true);
-    try {
-      const res = await platformApi.post("/stores", {
-        businessName: form.businessName,
-        ownerName: form.ownerName,
-        email: form.email,
-        phone: form.phone || undefined,
-        password: form.password,
-      });
-      navigate(`/platform/stores/${res.data.tenant.id}`, { replace: true });
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create store");
-    } finally {
-      setSubmitting(false);
-    }
+    createMutation.mutate(form);
   }
 
   return (
@@ -70,8 +75,8 @@ export function CreateStorePage() {
           This becomes the store owner's first login. Share it with them securely — it won't be shown again after creation.
         </div>
 
-        <button type="submit" className="btn btn-dark" disabled={submitting} style={{ width: 160 }}>
-          {submitting ? "Creating..." : "Create store"}
+        <button type="submit" className="btn btn-dark" disabled={createMutation.isPending} style={{ width: 160 }}>
+          {createMutation.isPending ? "Creating..." : "Create store"}
         </button>
       </form>
     </div>

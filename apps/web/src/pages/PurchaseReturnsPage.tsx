@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -33,37 +34,35 @@ const emptyForm = { branchId: "", supplierId: "", batchId: "", quantity: 1, reas
 
 export function PurchaseReturnsPage() {
   const { hasPermission } = useAuth();
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [batches, setBatches] = useState<Batch[]>([]);
+  const queryClient = useQueryClient();
   const [batchSearch, setBatchSearch] = useState("");
-  const [returns, setReturns] = useState<ReturnRow[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: ReturnRow[] }>("/purchase-returns");
-    setReturns(res.data.data);
-    setLoading(false);
-  }
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
 
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: async () => (await api.get<{ data: Supplier[] }>("/suppliers")).data.data,
+  });
+
+  const { data: batches = [] } = useQuery({
+    queryKey: ["batches", form.branchId],
+    queryFn: async () => (await api.get<{ data: Batch[] }>("/batches", { params: { branchId: form.branchId, status: "available" } })).data.data,
+    enabled: !!form.branchId,
+  });
+
+  const { data: returns = [], isLoading } = useQuery({
+    queryKey: ["purchase-returns"],
+    queryFn: async () => (await api.get<{ data: ReturnRow[] }>("/purchase-returns")).data.data,
+  });
+
+  // Clear the batch search box whenever the selected branch changes, matching the fresh batch list.
   useEffect(() => {
-    Promise.all([api.get<{ data: Branch[] }>("/branches"), api.get<{ data: Supplier[] }>("/suppliers")]).then(([b, s]) => {
-      setBranches(b.data.data);
-      setSuppliers(s.data.data);
-    });
-    load();
-  }, []);
-
-  useEffect(() => {
-    if (form.branchId) {
-      api.get<{ data: Batch[] }>("/batches", { params: { branchId: form.branchId, status: "available" } }).then((res) => setBatches(res.data.data));
-    } else {
-      setBatches([]);
-    }
     setBatchSearch("");
   }, [form.branchId]);
 
@@ -82,27 +81,33 @@ export function PurchaseReturnsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchSearch, batches]);
 
-  async function handleCreate(e: FormEvent) {
+  const createMutation = useMutation({
+    mutationFn: (payload: { branchId: string; supplierId: string; reason?: string; items: { productId: string; batchId: string; quantity: number; rate: number }[] }) =>
+      api.post("/purchase-returns", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-returns"] });
+      setShowForm(false);
+      setForm(emptyForm);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create purchase return");
+    },
+  });
+
+  function handleCreate(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     const batch = batches.find((b) => b.id === form.batchId);
     if (!batch) {
       setError("Select a batch");
       return;
     }
-    try {
-      await api.post("/purchase-returns", {
-        branchId: form.branchId,
-        supplierId: form.supplierId,
-        reason: form.reason || undefined,
-        items: [{ productId: batch.product.id, batchId: batch.id, quantity: form.quantity, rate: Number(batch.purchaseRate) }],
-      });
-      setShowForm(false);
-      setForm(emptyForm);
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create purchase return");
-    }
+    createMutation.mutate({
+      branchId: form.branchId,
+      supplierId: form.supplierId,
+      reason: form.reason || undefined,
+      items: [{ productId: batch.product.id, batchId: batch.id, quantity: form.quantity, rate: Number(batch.purchaseRate) }],
+    });
   }
 
   return (
@@ -170,8 +175,8 @@ export function PurchaseReturnsPage() {
               <input className="form-control" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save return
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Saving..." : "Save return"}
           </button>
         </form>
       )}
@@ -189,7 +194,7 @@ export function PurchaseReturnsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={6} className="text-center text-muted py-4">
                   Loading...

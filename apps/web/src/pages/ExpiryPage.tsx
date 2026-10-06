@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -18,35 +19,52 @@ interface ExpiryBatch {
   branch: { id: string; name: string };
 }
 
+// Batches move toward (or past) expiry as time passes and as stock is adjusted elsewhere in the
+// app, so this polls in the background rather than only loading once on mount.
+const REFRESH_INTERVAL_MS = 60_000;
+
 export function ExpiryPage() {
   const { hasPermission } = useAuth();
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const queryClient = useQueryClient();
   const [branchId, setBranchId] = useState("");
   const [windowDays, setWindowDays] = useState(90);
-  const [batches, setBatches] = useState<ExpiryBatch[]>([]);
-  const [summary, setSummary] = useState({ expiredCount: 0, nearExpiryCount: 0 });
-  const [loading, setLoading] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [removeQty, setRemoveQty] = useState(0);
-  const [removing, setRemoving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.get<{ data: Branch[] }>("/branches").then((res) => setBranches(res.data.data));
-  }, []);
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get("/inventory/expiry", { params: { branchId: branchId || undefined, windowDays } });
-    setBatches(res.data.data);
-    setSummary(res.data.summary);
-    setLoading(false);
-  }
+  const { data: expiryData, isLoading } = useQuery({
+    queryKey: ["inventory", "expiry", branchId, windowDays],
+    queryFn: async () => {
+      const res = await api.get("/inventory/expiry", { params: { branchId: branchId || undefined, windowDays } });
+      return {
+        batches: res.data.data as ExpiryBatch[],
+        summary: res.data.summary as { expiredCount: number; nearExpiryCount: number },
+      };
+    },
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchId, windowDays]);
+  const batches = expiryData?.batches ?? [];
+  const summary = expiryData?.summary ?? { expiredCount: 0, nearExpiryCount: 0 };
+  const loading = isLoading;
+
+  const removeMutation = useMutation({
+    mutationFn: (payload: { branchId: string; batchId: string; quantityDelta: number; reason: string; notes: string }) =>
+      api.post("/inventory/adjust", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory", "expiry"] });
+      setRemovingId(null);
+      setActionError(null);
+    },
+    onError: (err) => {
+      setActionError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to remove stock");
+    },
+  });
 
   function startRemove(b: ExpiryBatch) {
     setActionError(null);
@@ -54,28 +72,19 @@ export function ExpiryPage() {
     setRemoveQty(b.quantity);
   }
 
-  async function confirmRemove(b: ExpiryBatch) {
+  function confirmRemove(b: ExpiryBatch) {
     setActionError(null);
     if (removeQty <= 0 || removeQty > b.quantity) {
       setActionError(`Enter a quantity between 1 and ${b.quantity}`);
       return;
     }
-    setRemoving(true);
-    try {
-      await api.post("/inventory/adjust", {
-        branchId: b.branch.id,
-        batchId: b.id,
-        quantityDelta: -removeQty,
-        reason: "EXPIRED",
-        notes: "Removed via Expiry Management screen",
-      });
-      setRemovingId(null);
-      await load();
-    } catch (err) {
-      setActionError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to remove stock");
-    } finally {
-      setRemoving(false);
-    }
+    removeMutation.mutate({
+      branchId: b.branch.id,
+      batchId: b.id,
+      quantityDelta: -removeQty,
+      reason: "EXPIRED",
+      notes: "Removed via Expiry Management screen",
+    });
   }
 
   const canAdjust = hasPermission("inventory", "stock_adjustment");
@@ -185,8 +194,8 @@ export function ExpiryPage() {
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => setRemoveQty(Number(e.target.value))}
                           />
-                          <button className="btn btn-sm btn-danger" disabled={removing} onClick={() => confirmRemove(b)}>
-                            {removing ? "..." : "Confirm"}
+                          <button className="btn btn-sm btn-danger" disabled={removeMutation.isPending} onClick={() => confirmRemove(b)}>
+                            {removeMutation.isPending ? "..." : "Confirm"}
                           </button>
                           <button className="btn btn-sm btn-outline-secondary" onClick={() => setRemovingId(null)}>
                             Cancel

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -58,100 +59,100 @@ const INVOICE_TYPES = ["CASH", "CREDIT", "TAX", "RETAIL", "WHOLESALE"] as const;
 
 export function POSPage() {
   const { user, hasPermission } = useAuth();
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const queryClient = useQueryClient();
   const [branchId, setBranchId] = useState("");
   const [search, setSearch] = useState("");
-  const [results, setResults] = useState<ProductLite[]>([]);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [customerQuery, setCustomerQuery] = useState("");
-  const [customerResults, setCustomerResults] = useState<Customer[]>([]);
+  const [debouncedCustomerQuery, setDebouncedCustomerQuery] = useState("");
   const [customerId, setCustomerId] = useState("");
-  const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(null);
   const [newCustomerMobile, setNewCustomerMobile] = useState("");
-  const [savingCustomer, setSavingCustomer] = useState(false);
   const [invoiceType, setInvoiceType] = useState<(typeof INVOICE_TYPES)[number]>("CASH");
   const [payments, setPayments] = useState<PaymentLine[]>([]);
   const [autoPayment, setAutoPayment] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastInvoice, setLastInvoice] = useState<{ invoiceNumber: string; totalAmount: string } | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [pendingBatchProduct, setPendingBatchProduct] = useState<ProductLite | null>(null);
   const [batchPickerProduct, setBatchPickerProduct] = useState<ProductLite | null>(null);
   const [batchPickerOptions, setBatchPickerOptions] = useState<BatchOption[]>([]);
-  const [batchPickerLoading, setBatchPickerLoading] = useState(false);
   const [batchFilterQuery, setBatchFilterQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
+
+  // Default to the first branch once the list arrives, but only if the cashier hasn't
+  // already picked one (so a refetch never silently overrides their selection).
   useEffect(() => {
-    api.get<{ data: Branch[] }>("/branches").then((res) => {
-      setBranches(res.data.data);
-      if (res.data.data.length > 0) setBranchId(res.data.data[0].id);
-    });
-  }, []);
+    if (!branchId && branches.length > 0) setBranchId(branches[0].id);
+  }, [branches, branchId]);
+
+  const { data: customerDetail } = useQuery({
+    queryKey: ["customer", customerId],
+    queryFn: async () => (await api.get<{ data: CustomerDetail }>(`/customers/${customerId}`)).data.data,
+    enabled: !!customerId,
+  });
 
   useEffect(() => {
-    if (!customerId) {
-      setCustomerDetail(null);
-      return;
-    }
-    api.get<{ data: CustomerDetail }>(`/customers/${customerId}`).then((res) => setCustomerDetail(res.data.data));
-  }, [customerId]);
-
-  useEffect(() => {
-    if (customerId || customerQuery.trim().length < 2) {
-      setCustomerResults([]);
-      return;
-    }
-    const handle = setTimeout(() => {
-      api.get<{ data: Customer[] }>("/customers", { params: { search: customerQuery } }).then((res) => setCustomerResults(res.data.data.slice(0, 8)));
-    }, 250);
+    const handle = setTimeout(() => setDebouncedCustomerQuery(customerQuery), 250);
     return () => clearTimeout(handle);
-  }, [customerQuery, customerId]);
+  }, [customerQuery]);
+
+  const customerSearchQuery = useQuery({
+    queryKey: ["customers", "search", debouncedCustomerQuery],
+    queryFn: async () =>
+      (await api.get<{ data: Customer[] }>("/customers", { params: { search: debouncedCustomerQuery } })).data.data.slice(0, 8),
+    enabled: !customerId && debouncedCustomerQuery.trim().length >= 2,
+  });
+  const customerResults = customerId || customerQuery.trim().length < 2 ? [] : customerSearchQuery.data ?? [];
 
   function selectCustomer(c: Customer) {
     setCustomerId(c.id);
     setCustomerQuery(c.name);
-    setCustomerResults([]);
   }
 
   function clearCustomer() {
     setCustomerId("");
-    setCustomerDetail(null);
     setCustomerQuery("");
     setNewCustomerMobile("");
   }
 
-  async function handleCreateCustomerInline() {
-    const name = customerQuery.trim();
-    if (!name || !newCustomerMobile.trim()) return;
-    setSavingCustomer(true);
-    setError(null);
-    try {
-      const res = await api.post<{ data: Customer }>("/customers", {
-        name,
-        mobile: newCustomerMobile.trim() || undefined,
-      });
+  const createCustomerMutation = useMutation({
+    mutationFn: (payload: { name: string; mobile?: string }) => api.post<{ data: Customer }>("/customers", payload),
+    onSuccess: (res) => {
       const created = res.data.data;
       setCustomerId(created.id);
       setCustomerQuery(created.name);
-      setCustomerResults([]);
       setNewCustomerMobile("");
-    } catch (err) {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create customer");
-    } finally {
-      setSavingCustomer(false);
-    }
+    },
+  });
+
+  function handleCreateCustomerInline() {
+    const name = customerQuery.trim();
+    if (!name || !newCustomerMobile.trim()) return;
+    createCustomerMutation.mutate({ name, mobile: newCustomerMobile.trim() || undefined });
   }
 
   useEffect(() => {
-    if (search.trim().length < 2) {
-      setResults([]);
-      return;
-    }
-    const handle = setTimeout(() => {
-      api.get<{ data: ProductLite[] }>("/products", { params: { search, pageSize: 10 } }).then((res) => setResults(res.data.data));
-    }, 250);
+    const handle = setTimeout(() => setDebouncedSearch(search), 250);
     return () => clearTimeout(handle);
   }, [search]);
+
+  const productSearchQuery = useQuery({
+    queryKey: ["products", "search", debouncedSearch],
+    queryFn: async () =>
+      (await api.get<{ data: ProductLite[] }>("/products", { params: { search: debouncedSearch, pageSize: 10 } })).data.data,
+    enabled: debouncedSearch.trim().length >= 2,
+  });
+  const results = search.trim().length < 2 ? [] : productSearchQuery.data ?? [];
 
   function addToCart(p: ProductLite, batch?: BatchOption) {
     setCart((prev) => {
@@ -177,34 +178,47 @@ export function POSPage() {
       ];
     });
     setSearch("");
-    setResults([]);
     searchRef.current?.focus();
   }
 
-  // Looks up which batches are actually sellable for this product at this branch. If more
-  // than one manufacturer has stock, the cashier is asked which to sell instead of the
-  // system silently picking one via FEFO.
-  async function handleProductSelect(p: ProductLite) {
-    setSearch("");
-    setResults([]);
-    if (!branchId) return;
-    setBatchPickerLoading(true);
-    try {
-      const res = await api.get<{ data: BatchOption[] }>("/sales/available-batches", { params: { productId: p.id, branchId } });
-      const batches = res.data.data;
-      const manufacturerIds = new Set(batches.map((b) => b.manufacturer?.id ?? "unspecified"));
-      if (batches.length === 0) {
-        addToCart(p);
-      } else if (manufacturerIds.size <= 1) {
-        addToCart(p);
-      } else {
-        setBatchPickerProduct(p);
-        setBatchPickerOptions(batches);
-        setBatchFilterQuery("");
-      }
-    } finally {
-      setBatchPickerLoading(false);
+  // Looks up which batches are actually sellable for this product at this branch. staleTime: 0
+  // keeps this always-fresh (never cached) — a cashier actively building a cart must never sell
+  // against stock numbers that could already be stale. If more than one manufacturer has stock,
+  // the cashier is asked which to sell instead of the system silently picking one via FEFO.
+  const availableBatchesQuery = useQuery({
+    queryKey: ["available-batches", pendingBatchProduct?.id, branchId],
+    queryFn: async () =>
+      (
+        await api.get<{ data: BatchOption[] }>("/sales/available-batches", {
+          params: { productId: pendingBatchProduct!.id, branchId },
+        })
+      ).data.data,
+    enabled: !!pendingBatchProduct && !!branchId,
+    staleTime: 0,
+  });
+  const batchPickerLoading = availableBatchesQuery.isFetching;
+
+  useEffect(() => {
+    if (!pendingBatchProduct || !availableBatchesQuery.data) return;
+    const batches = availableBatchesQuery.data;
+    const manufacturerIds = new Set(batches.map((b) => b.manufacturer?.id ?? "unspecified"));
+    if (batches.length === 0) {
+      addToCart(pendingBatchProduct);
+    } else if (manufacturerIds.size <= 1) {
+      addToCart(pendingBatchProduct);
+    } else {
+      setBatchPickerProduct(pendingBatchProduct);
+      setBatchPickerOptions(batches);
+      setBatchFilterQuery("");
     }
+    setPendingBatchProduct(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableBatchesQuery.data]);
+
+  function handleProductSelect(p: ProductLite) {
+    setSearch("");
+    if (!branchId) return;
+    setPendingBatchProduct(p);
   }
 
   function pickBatch(batch: BatchOption) {
@@ -288,37 +302,48 @@ export function POSPage() {
           : insufficientPayment
             ? `₹${balance.toFixed(2)} payment still due`
             : null;
-  const checkoutDisabled = submitting || blockingReason !== null;
 
-  async function handleCheckout() {
-    setError(null);
-    setSubmitting(true);
-    try {
-      const res = await api.post("/sales", {
-        branchId,
-        customerId: customerId || undefined,
-        invoiceType,
-        items: cart.map((l) => ({
-          productId: l.productId,
-          batchId: l.batchId,
-          quantity: l.quantity,
-          sellingPrice: l.sellingPrice,
-          discountPercent: l.discountPercent,
-        })),
-        payments: payments.map((p) => ({ amount: p.amount, paymentMode: p.paymentMode })),
-      });
+  const checkoutMutation = useMutation({
+    mutationFn: (payload: {
+      branchId: string;
+      customerId?: string;
+      invoiceType: typeof invoiceType;
+      items: { productId: string; batchId?: string; quantity: number; sellingPrice: number; discountPercent: number }[];
+      payments: { amount: number; paymentMode: string }[];
+    }) => api.post("/sales", payload),
+    onSuccess: (res) => {
       setLastInvoice({ invoiceNumber: res.data.data.invoiceNumber, totalAmount: res.data.data.totalAmount });
       setCart([]);
       setPayments([]);
       setAutoPayment(true);
       clearCustomer();
       setInvoiceType("CASH");
+      setError(null);
       searchRef.current?.focus();
-    } catch (err) {
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Checkout failed");
-    } finally {
-      setSubmitting(false);
-    }
+    },
+  });
+
+  const checkoutDisabled = checkoutMutation.isPending || blockingReason !== null;
+
+  function handleCheckout() {
+    setError(null);
+    checkoutMutation.mutate({
+      branchId,
+      customerId: customerId || undefined,
+      invoiceType,
+      items: cart.map((l) => ({
+        productId: l.productId,
+        batchId: l.batchId,
+        quantity: l.quantity,
+        sellingPrice: l.sellingPrice,
+        discountPercent: l.discountPercent,
+      })),
+      payments: payments.map((p) => ({ amount: p.amount, paymentMode: p.paymentMode })),
+    });
   }
 
   return (
@@ -519,10 +544,10 @@ export function POSPage() {
                         <button
                           className="btn btn-sm btn-primary w-100"
                           type="button"
-                          disabled={!newCustomerMobile.trim() || savingCustomer}
+                          disabled={!newCustomerMobile.trim() || createCustomerMutation.isPending}
                           onClick={handleCreateCustomerInline}
                         >
-                          {savingCustomer ? "Saving..." : `+ Add "${customerQuery.trim()}" as new customer`}
+                          {createCustomerMutation.isPending ? "Saving..." : `+ Add "${customerQuery.trim()}" as new customer`}
                         </button>
                       </>
                     ) : (
@@ -614,9 +639,9 @@ export function POSPage() {
           </div>
 
           <button className="btn btn-success btn-lg w-100" disabled={checkoutDisabled} onClick={handleCheckout}>
-            {submitting ? "Processing..." : "Complete Sale"}
+            {checkoutMutation.isPending ? "Processing..." : "Complete Sale"}
           </button>
-          {blockingReason && !submitting && <div className="text-danger small mt-2 text-center">{blockingReason}</div>}
+          {blockingReason && !checkoutMutation.isPending && <div className="text-danger small mt-2 text-center">{blockingReason}</div>}
           <div className="text-muted small mt-2">Billed by {user?.name}</div>
         </div>
       </div>

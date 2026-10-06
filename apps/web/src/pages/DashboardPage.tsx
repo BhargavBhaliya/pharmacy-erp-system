@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthContext";
 import { api } from "../api/client";
 
@@ -15,52 +15,72 @@ function isToday(iso: string): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
+// Dashboard figures change as the day goes on (new sales, stock moving toward expiry), so this
+// polls in the background rather than only loading once on mount.
+const REFRESH_INTERVAL_MS = 60_000;
+
 export function DashboardPage() {
   const { user, hasPermission } = useAuth();
-  const [lowStockCount, setLowStockCount] = useState<number | null>(null);
-  const [expiredCount, setExpiredCount] = useState<number | null>(null);
-  const [nearExpiryCount, setNearExpiryCount] = useState<number | null>(null);
-  const [salesToday, setSalesToday] = useState<number | null>(null);
-  const [purchaseToday, setPurchaseToday] = useState<number | null>(null);
-  const [receivables, setReceivables] = useState<number | null>(null);
-  const [payables, setPayables] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (hasPermission("inventory", "view")) {
-      api.get<{ data: unknown[] }>("/inventory/low-stock").then((res) => setLowStockCount(res.data.data.length));
-    }
-    if (hasPermission("expiry", "view")) {
-      api.get("/inventory/expiry").then((res) => {
-        setExpiredCount(res.data.summary.expiredCount);
-        setNearExpiryCount(res.data.summary.nearExpiryCount);
-      });
-    }
-    if (hasPermission("sales", "view")) {
-      api.get<{ data: MoneyDoc[] }>("/sales").then((res) => {
-        const confirmed = res.data.data.filter((s) => s.status !== "CANCELLED");
-        setSalesToday(confirmed.filter((s) => isToday(s.createdAt)).reduce((sum, s) => sum + Number(s.totalAmount), 0));
-        setReceivables(confirmed.reduce((sum, s) => sum + (Number(s.totalAmount) - Number(s.paidAmount)), 0));
-      });
-    }
-    if (hasPermission("purchase", "view")) {
-      api.get<{ data: MoneyDoc[] }>("/purchases").then((res) => {
-        setPurchaseToday(res.data.data.filter((p) => isToday(p.createdAt)).reduce((sum, p) => sum + Number(p.totalAmount), 0));
-        setPayables(res.data.data.reduce((sum, p) => sum + (Number(p.totalAmount) - Number(p.paidAmount)), 0));
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const canViewInventory = hasPermission("inventory", "view");
+  const canViewExpiry = hasPermission("expiry", "view");
+  const canViewSales = hasPermission("sales", "view");
+  const canViewPurchase = hasPermission("purchase", "view");
 
-  const money = (v: number | null) => (v === null ? "—" : `₹${v.toFixed(2)}`);
+  const lowStockQuery = useQuery({
+    queryKey: ["dashboard", "low-stock"],
+    queryFn: async () => (await api.get<{ data: unknown[] }>("/inventory/low-stock")).data.data.length,
+    enabled: canViewInventory,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+
+  const expiryQuery = useQuery({
+    queryKey: ["dashboard", "expiry"],
+    queryFn: async () => {
+      const res = await api.get("/inventory/expiry");
+      return { expiredCount: res.data.summary.expiredCount as number, nearExpiryCount: res.data.summary.nearExpiryCount as number };
+    },
+    enabled: canViewExpiry,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+
+  const salesQuery = useQuery({
+    queryKey: ["dashboard", "sales"],
+    queryFn: async () => {
+      const res = await api.get<{ data: MoneyDoc[] }>("/sales");
+      const confirmed = res.data.data.filter((s) => s.status !== "CANCELLED");
+      return {
+        salesToday: confirmed.filter((s) => isToday(s.createdAt)).reduce((sum, s) => sum + Number(s.totalAmount), 0),
+        receivables: confirmed.reduce((sum, s) => sum + (Number(s.totalAmount) - Number(s.paidAmount)), 0),
+      };
+    },
+    enabled: canViewSales,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+
+  const purchaseQuery = useQuery({
+    queryKey: ["dashboard", "purchases"],
+    queryFn: async () => {
+      const res = await api.get<{ data: MoneyDoc[] }>("/purchases");
+      return {
+        purchaseToday: res.data.data.filter((p) => isToday(p.createdAt)).reduce((sum, p) => sum + Number(p.totalAmount), 0),
+        payables: res.data.data.reduce((sum, p) => sum + (Number(p.totalAmount) - Number(p.paidAmount)), 0),
+      };
+    },
+    enabled: canViewPurchase,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+
+  const money = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `₹${v.toFixed(2)}`);
 
   const cards = [
-    { label: "Sales Today", value: money(salesToday), variant: "success" },
-    { label: "Purchases Today", value: money(purchaseToday), variant: "primary" },
-    { label: "Receivables (Customers Owe)", value: money(receivables), variant: "warning" },
-    { label: "Payables (Owed to Suppliers)", value: money(payables), variant: "warning" },
-    { label: "Low Stock Products", value: lowStockCount ?? "—", variant: "warning" },
-    { label: "Near Expiry Batches", value: nearExpiryCount ?? "—", variant: "warning" },
-    { label: "Expired Batches", value: expiredCount ?? "—", variant: "danger" },
+    { label: "Sales Today", value: money(salesQuery.data?.salesToday), variant: "success" },
+    { label: "Purchases Today", value: money(purchaseQuery.data?.purchaseToday), variant: "primary" },
+    { label: "Receivables (Customers Owe)", value: money(salesQuery.data?.receivables), variant: "warning" },
+    { label: "Payables (Owed to Suppliers)", value: money(purchaseQuery.data?.payables), variant: "warning" },
+    { label: "Low Stock Products", value: lowStockQuery.data ?? "—", variant: "warning" },
+    { label: "Near Expiry Batches", value: expiryQuery.data?.nearExpiryCount ?? "—", variant: "warning" },
+    { label: "Expired Batches", value: expiryQuery.data?.expiredCount ?? "—", variant: "danger" },
   ];
 
   return (

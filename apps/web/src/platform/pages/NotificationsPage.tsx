@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { platformApi } from "../api/platformClient";
 
 interface BillingRow {
@@ -15,29 +16,43 @@ interface BillingRow {
   isOverdue: boolean;
 }
 
+const REFRESH_INTERVAL_MS = 30_000;
+
 function daysOverdue(dueDate: string): number {
   return Math.floor((Date.now() - new Date(dueDate).getTime()) / 86_400_000);
 }
 
 export function NotificationsPage() {
-  const [rows, setRows] = useState<BillingRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [renewingId, setRenewingId] = useState<string | null>(null);
   const [renewAmount, setRenewAmount] = useState("");
   const [renewMode, setRenewMode] = useState("CASH");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
-    setLoading(true);
-    const res = await platformApi.get<{ data: BillingRow[] }>("/billing-overview");
-    setRows(res.data.data.filter((r) => r.isOverdue));
-    setLoading(false);
-  }
+  // Overdue subscriptions are the most time-sensitive thing on the platform admin side, so this
+  // list polls in the background rather than only loading once on mount.
+  const { data: allRows = [], isLoading } = useQuery({
+    queryKey: ["platform", "billing-overview"],
+    queryFn: async () => (await platformApi.get<{ data: BillingRow[] }>("/billing-overview")).data.data,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+  const rows = allRows.filter((r) => r.isOverdue);
 
-  useEffect(() => {
-    load();
-  }, []);
+  const renewMutation = useMutation({
+    mutationFn: ({ tenantId, amount, mode }: { tenantId: string; amount: number; mode: string }) =>
+      platformApi.post(`/stores/${tenantId}/payments`, {
+        amount,
+        paymentMode: mode,
+        extendDueDate: true,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["platform", "billing-overview"] });
+      setRenewingId(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record payment");
+    },
+  });
 
   function startRenew(row: BillingRow) {
     setError(null);
@@ -46,26 +61,13 @@ export function NotificationsPage() {
     setRenewMode("CASH");
   }
 
-  async function confirmRenew(tenantId: string) {
+  function confirmRenew(tenantId: string) {
     setError(null);
     if (!renewAmount || Number(renewAmount) <= 0) {
       setError("Enter a valid amount");
       return;
     }
-    setSubmitting(true);
-    try {
-      await platformApi.post(`/stores/${tenantId}/payments`, {
-        amount: Number(renewAmount),
-        paymentMode: renewMode,
-        extendDueDate: true,
-      });
-      setRenewingId(null);
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record payment");
-    } finally {
-      setSubmitting(false);
-    }
+    renewMutation.mutate({ tenantId, amount: Number(renewAmount), mode: renewMode });
   }
 
   return (
@@ -75,9 +77,9 @@ export function NotificationsPage() {
 
       {error && <div className="alert alert-danger py-2">{error}</div>}
 
-      {loading && <div className="text-muted">Loading...</div>}
+      {isLoading && <div className="text-muted">Loading...</div>}
 
-      {!loading && rows.length === 0 && (
+      {!isLoading && rows.length === 0 && (
         <div className="card card-body text-center text-muted py-5">
           <div className="fs-1 mb-2">✓</div>
           No overdue subscriptions right now.
@@ -121,8 +123,8 @@ export function NotificationsPage() {
                       </option>
                     ))}
                   </select>
-                  <button className="btn btn-sm btn-success" disabled={submitting} onClick={() => confirmRenew(r.id)}>
-                    {submitting ? "..." : "Confirm"}
+                  <button className="btn btn-sm btn-success" disabled={renewMutation.isPending} onClick={() => confirmRenew(r.id)}>
+                    {renewMutation.isPending ? "..." : "Confirm"}
                   </button>
                   <button className="btn btn-sm btn-outline-secondary" onClick={() => setRenewingId(null)}>
                     Cancel

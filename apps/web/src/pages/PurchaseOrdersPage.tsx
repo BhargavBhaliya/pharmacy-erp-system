@@ -1,5 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -35,52 +36,53 @@ interface LineItem {
 
 export function PurchaseOrdersPage() {
   const { hasPermission } = useAuth();
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [products, setProducts] = useState<ProductLite[]>([]);
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [branchId, setBranchId] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [items, setItems] = useState<LineItem[]>([{ productId: "", quantity: 1, rate: 0 }]);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: PurchaseOrder[] }>("/purchase-orders");
-    setOrders(res.data.data);
-    setLoading(false);
-  }
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
 
-  useEffect(() => {
-    Promise.all([
-      api.get<{ data: Branch[] }>("/branches"),
-      api.get<{ data: Supplier[] }>("/suppliers"),
-      api.get<{ data: ProductLite[] }>("/products", { params: { pageSize: 200 } }),
-    ]).then(([b, s, p]) => {
-      setBranches(b.data.data);
-      setSuppliers(s.data.data);
-      setProducts(p.data.data);
-    });
-    load();
-  }, []);
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: async () => (await api.get<{ data: Supplier[] }>("/suppliers")).data.data,
+  });
+
+  const { data: products = [] } = useQuery({
+    queryKey: ["products", { pageSize: 200 }],
+    queryFn: async () => (await api.get<{ data: ProductLite[] }>("/products", { params: { pageSize: 200 } })).data.data,
+  });
+
+  const { data: orders = [], isLoading } = useQuery({
+    queryKey: ["purchase-orders"],
+    queryFn: async () => (await api.get<{ data: PurchaseOrder[] }>("/purchase-orders")).data.data,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (payload: { branchId: string; supplierId: string; items: LineItem[] }) => api.post("/purchase-orders", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
+      setShowForm(false);
+      setItems([{ productId: "", quantity: 1, rate: 0 }]);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create purchase order");
+    },
+  });
 
   function updateItem(index: number, patch: Partial<LineItem>) {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
   }
 
-  async function handleCreate(e: FormEvent) {
+  function handleCreate(e: FormEvent) {
     e.preventDefault();
-    setError(null);
-    try {
-      await api.post("/purchase-orders", { branchId, supplierId, items });
-      setShowForm(false);
-      setItems([{ productId: "", quantity: 1, rate: 0 }]);
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create purchase order");
-    }
+    createMutation.mutate({ branchId, supplierId, items });
   }
 
   const statusBadge = (status: string) => {
@@ -185,8 +187,8 @@ export function PurchaseOrdersPage() {
             + Add line
           </button>
           <div>
-            <button type="submit" className="btn btn-primary" style={{ width: 160 }}>
-              Send order
+            <button type="submit" className="btn btn-primary" style={{ width: 160 }} disabled={createMutation.isPending}>
+              {createMutation.isPending ? "Saving..." : "Send order"}
             </button>
           </div>
         </form>
@@ -205,7 +207,7 @@ export function PurchaseOrdersPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={6} className="text-center text-muted py-4">
                   Loading...

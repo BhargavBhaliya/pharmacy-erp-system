@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -20,31 +21,53 @@ interface BusinessProfile {
 
 export function SettingsPage() {
   const { hasPermission } = useAuth();
+  const queryClient = useQueryClient();
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
   const [expiryWarningDays, setExpiryWarningDays] = useState(90);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canEdit = hasPermission("settings", "edit");
 
-  useEffect(() => {
-    api.get<{ data: BusinessProfile }>("/settings/business").then((res) => setProfile(res.data.data));
-    api.get<{ data: number | null }>("/settings/expiryWarningDays").then((res) => {
-      if (res.data.data !== null) setExpiryWarningDays(res.data.data);
-    });
-  }, []);
+  const { data: profileData } = useQuery({
+    queryKey: ["settings", "business"],
+    queryFn: async () => (await api.get<{ data: BusinessProfile }>("/settings/business")).data.data,
+  });
 
-  async function handleSave(e: FormEvent) {
+  const { data: expiryWarningDaysData } = useQuery({
+    queryKey: ["settings", "expiryWarningDays"],
+    queryFn: async () => (await api.get<{ data: number | null }>("/settings/expiryWarningDays")).data.data,
+  });
+
+  // profile/expiryWarningDays are edited locally as form state, seeded from the query results
+  // (and re-seeded whenever the server copy changes, e.g. after a save invalidates the cache).
+  useEffect(() => {
+    if (profileData) setProfile(profileData);
+  }, [profileData]);
+
+  useEffect(() => {
+    if (expiryWarningDaysData !== undefined && expiryWarningDaysData !== null) setExpiryWarningDays(expiryWarningDaysData);
+  }, [expiryWarningDaysData]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (payload: { profile: BusinessProfile; expiryWarningDays: number }) => {
+      await api.put("/settings/business", payload.profile);
+      await api.put("/settings/expiryWarningDays", { value: payload.expiryWarningDays });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      setSaved(true);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save settings");
+    },
+  });
+
+  function handleSave(e: FormEvent) {
     e.preventDefault();
     if (!profile) return;
-    setError(null);
     setSaved(false);
-    try {
-      await api.put("/settings/business", profile);
-      await api.put("/settings/expiryWarningDays", { value: expiryWarningDays });
-      setSaved(true);
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save settings");
-    }
+    saveMutation.mutate({ profile, expiryWarningDays });
   }
 
   async function handleExport() {
@@ -120,8 +143,8 @@ export function SettingsPage() {
               <input type="number" className="form-control" value={expiryWarningDays} onChange={(e) => setExpiryWarningDays(Number(e.target.value))} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save settings
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? "Saving..." : "Save settings"}
           </button>
         </fieldset>
       </form>

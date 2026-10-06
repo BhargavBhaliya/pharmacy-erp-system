@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -12,27 +13,33 @@ interface NotificationItem {
   link?: string | null;
 }
 
+const REFRESH_INTERVAL_MS = 30_000;
+
 export function NotificationBell() {
   const { hasPermission } = useAuth();
-  const [items, setItems] = useState<NotificationItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const canView = hasPermission("notifications", "view");
 
-  async function load() {
-    if (!canView) return;
-    const res = await api.get<{ data: NotificationItem[]; unreadCount: number }>("/notifications", { params: { pageSize: 10 } });
-    setItems(res.data.data);
-    setUnreadCount(res.data.unreadCount);
-  }
+  const { data } = useQuery({
+    queryKey: ["notifications", "bell"],
+    queryFn: async () => (await api.get<{ data: NotificationItem[]; unreadCount: number }>("/notifications", { params: { pageSize: 10 } })).data,
+    enabled: canView,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+  const items = data?.data ?? [];
+  const unreadCount = data?.unreadCount ?? 0;
 
-  useEffect(() => {
-    load();
-    const interval = setInterval(load, 30000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canView]);
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => api.put(`/notifications/${id}/read`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => api.put("/notifications/read-all"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+  });
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -43,16 +50,6 @@ export function NotificationBell() {
   }, []);
 
   if (!canView) return null;
-
-  async function markRead(id: string) {
-    await api.put(`/notifications/${id}/read`);
-    await load();
-  }
-
-  async function markAllRead() {
-    await api.put("/notifications/read-all");
-    await load();
-  }
 
   return (
     <div className="position-relative" ref={ref}>
@@ -67,7 +64,7 @@ export function NotificationBell() {
           <div className="card-header d-flex justify-content-between align-items-center py-2">
             <strong className="small">Notifications</strong>
             {unreadCount > 0 && (
-              <button className="btn btn-sm btn-link p-0" onClick={markAllRead}>
+              <button className="btn btn-sm btn-link p-0" onClick={() => markAllReadMutation.mutate()}>
                 Mark all read
               </button>
             )}
@@ -79,7 +76,7 @@ export function NotificationBell() {
                 <div className="d-flex justify-content-between">
                   <strong>{n.title}</strong>
                   {!n.isRead && (
-                    <button className="btn btn-sm btn-link p-0" onClick={() => markRead(n.id)}>
+                    <button className="btn btn-sm btn-link p-0" onClick={() => markReadMutation.mutate(n.id)}>
                       Mark read
                     </button>
                   )}

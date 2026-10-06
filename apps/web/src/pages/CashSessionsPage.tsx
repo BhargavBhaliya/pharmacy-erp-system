@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -23,65 +24,77 @@ interface CashSession {
   branch: { name: string };
 }
 
+// A cashier needs to know promptly if their session state changed (e.g. closed from another
+// device), so this polls in the background rather than relying solely on the default staleTime.
+const REFRESH_INTERVAL_MS = 30_000;
+
 export function CashSessionsPage() {
   const { hasPermission } = useAuth();
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [counters, setCounters] = useState<Counter[]>([]);
-  const [sessions, setSessions] = useState<CashSession[]>([]);
+  const queryClient = useQueryClient();
   const [branchId, setBranchId] = useState("");
   const [openingAmount, setOpeningAmount] = useState(0);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [closingAmount, setClosingAmount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    const res = await api.get<{ data: CashSession[] }>("/cash-sessions");
-    setSessions(res.data.data);
-    setLoading(false);
-  }
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
 
+  // Default to the first branch once branches load, same as the original mount-time behavior.
   useEffect(() => {
-    api.get<{ data: Branch[] }>("/branches").then((res) => {
-      setBranches(res.data.data);
-      if (res.data.data.length > 0) setBranchId(res.data.data[0].id);
-    });
-    load();
-  }, []);
+    if (branches.length > 0 && !branchId) setBranchId(branches[0].id);
+  }, [branches, branchId]);
 
-  useEffect(() => {
-    if (branchId) {
-      api.get<{ data: Counter[] }>("/counters", { params: { branchId } }).then((res) => setCounters(res.data.data));
-    }
-  }, [branchId]);
+  const { data: counters = [] } = useQuery({
+    queryKey: ["counters", branchId],
+    queryFn: async () => (await api.get<{ data: Counter[] }>("/counters", { params: { branchId } })).data.data,
+    enabled: !!branchId,
+  });
 
   // Each branch has a single default counter (no multi-counter setup) — use it
   // automatically instead of asking the cashier to pick one.
   const counterId = counters[0]?.id ?? "";
 
-  async function handleOpen(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await api.post("/cash-sessions", { branchId, counterId, openingAmount });
-      setOpeningAmount(0);
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to open session");
-    }
-  }
+  const { data: sessions = [], isLoading } = useQuery({
+    queryKey: ["cash-sessions"],
+    queryFn: async () => (await api.get<{ data: CashSession[] }>("/cash-sessions")).data.data,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
 
-  async function handleClose(id: string) {
-    setError(null);
-    try {
-      await api.put(`/cash-sessions/${id}/close`, { closingAmount });
+  const openMutation = useMutation({
+    mutationFn: (payload: { branchId: string; counterId: string; openingAmount: number }) => api.post("/cash-sessions", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cash-sessions"] });
+      setOpeningAmount(0);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to open session");
+    },
+  });
+
+  const closeMutation = useMutation({
+    mutationFn: (payload: { id: string; closingAmount: number }) => api.put(`/cash-sessions/${payload.id}/close`, { closingAmount: payload.closingAmount }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cash-sessions"] });
       setClosingId(null);
       setClosingAmount(0);
-      await load();
-    } catch (err) {
+      setError(null);
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to close session");
-    }
+    },
+  });
+
+  function handleOpen(e: FormEvent) {
+    e.preventDefault();
+    openMutation.mutate({ branchId, counterId, openingAmount });
+  }
+
+  function handleClose(id: string) {
+    closeMutation.mutate({ id, closingAmount });
   }
 
   return (
@@ -108,8 +121,8 @@ export function CashSessionsPage() {
               <input type="number" step="0.01" className="form-control" required value={openingAmount} onChange={(e) => setOpeningAmount(Number(e.target.value))} />
             </div>
             <div className="col-md-4 d-flex align-items-end">
-              <button type="submit" className="btn btn-primary w-100" disabled={!counterId}>
-                Open session
+              <button type="submit" className="btn btn-primary w-100" disabled={!counterId || openMutation.isPending}>
+                {openMutation.isPending ? "Opening..." : "Open session"}
               </button>
             </div>
             {!counterId && branchId && <div className="col-12 text-danger small">This branch has no counter set up yet.</div>}
@@ -132,7 +145,7 @@ export function CashSessionsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={8} className="text-center text-muted py-4">
                   Loading...
@@ -161,7 +174,7 @@ export function CashSessionsPage() {
                     closingId === s.id ? (
                       <div className="d-flex gap-1 justify-content-end">
                         <input type="number" className="form-control form-control-sm" style={{ width: 100 }} value={closingAmount} onChange={(e) => setClosingAmount(Number(e.target.value))} />
-                        <button className="btn btn-sm btn-primary" onClick={() => handleClose(s.id)}>
+                        <button className="btn btn-sm btn-primary" onClick={() => handleClose(s.id)} disabled={closeMutation.isPending}>
                           Close
                         </button>
                       </div>

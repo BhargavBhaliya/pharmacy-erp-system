@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -34,71 +35,92 @@ interface Batch {
 const emptyBatchForm = { productId: "", batchNumber: "", expiryDate: "", purchaseRate: 0, mrp: 0, quantity: 0 };
 const emptyAdjustForm = { batchId: "", quantityDelta: 0, reason: "CORRECTION", notes: "" };
 
+// Stock levels move as sales/purchases happen elsewhere in the app, so this polls in the
+// background rather than only loading once on mount.
+const REFRESH_INTERVAL_MS = 60_000;
+
 export function InventoryPage() {
   const { hasPermission } = useAuth();
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const queryClient = useQueryClient();
   const [branchId, setBranchId] = useState("");
-  const [products, setProducts] = useState<ProductLite[]>([]);
-  const [stock, setStock] = useState<StockRow[]>([]);
-  const [batches, setBatches] = useState<Batch[]>([]);
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [batchForm, setBatchForm] = useState(emptyBatchForm);
   const [adjustForm, setAdjustForm] = useState<typeof emptyAdjustForm | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function loadStock(forBranch: string) {
-    setLoading(true);
-    const [stockRes, batchesRes] = await Promise.all([
-      api.get<{ data: StockRow[] }>("/inventory/stock", { params: { branchId: forBranch } }),
-      api.get<{ data: Batch[] }>("/batches", { params: { branchId: forBranch, status: "available" } }),
-    ]);
-    setStock(stockRes.data.data);
-    setBatches(batchesRes.data.data);
-    setLoading(false);
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
+
+  const { data: products = [] } = useQuery({
+    queryKey: ["products", "lookup"],
+    queryFn: async () => (await api.get<{ data: ProductLite[] }>("/products", { params: { pageSize: 200 } })).data.data,
+  });
+
+  // Default to the first branch once branches have loaded, without overriding a selection the
+  // user already made.
+  useEffect(() => {
+    if (!branchId && branches.length > 0) setBranchId(branches[0].id);
+  }, [branches, branchId]);
+
+  const stockQuery = useQuery({
+    queryKey: ["inventory", "stock", branchId],
+    queryFn: async () => (await api.get<{ data: StockRow[] }>("/inventory/stock", { params: { branchId } })).data.data,
+    enabled: !!branchId,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+
+  const batchesQuery = useQuery({
+    queryKey: ["batches", branchId, "available"],
+    queryFn: async () => (await api.get<{ data: Batch[] }>("/batches", { params: { branchId, status: "available" } })).data.data,
+    enabled: !!branchId,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+
+  const stock = stockQuery.data ?? [];
+  const batches = batchesQuery.data ?? [];
+  const loading = stockQuery.isLoading || batchesQuery.isLoading;
+
+  function invalidateInventory() {
+    queryClient.invalidateQueries({ queryKey: ["inventory", "stock"] });
+    queryClient.invalidateQueries({ queryKey: ["batches"] });
   }
 
-  useEffect(() => {
-    Promise.all([api.get<{ data: Branch[] }>("/branches"), api.get<{ data: ProductLite[] }>("/products", { params: { pageSize: 200 } })]).then(
-      ([b, p]) => {
-        setBranches(b.data.data);
-        setProducts(p.data.data);
-        if (b.data.data.length > 0) {
-          setBranchId(b.data.data[0].id);
-        }
-      }
-    );
-  }, []);
-
-  useEffect(() => {
-    if (branchId) loadStock(branchId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchId]);
-
-  async function handleCreateBatch(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    try {
-      await api.post("/batches", { ...batchForm, branchId, expiryDate: new Date(batchForm.expiryDate).toISOString() });
+  const createBatchMutation = useMutation({
+    mutationFn: (payload: typeof emptyBatchForm & { branchId: string; expiryDate: string }) => api.post("/batches", payload),
+    onSuccess: () => {
+      invalidateInventory();
       setShowBatchForm(false);
       setBatchForm(emptyBatchForm);
-      await loadStock(branchId);
-    } catch (err) {
+      setError(null);
+    },
+    onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create batch");
-    }
+    },
+  });
+
+  const adjustMutation = useMutation({
+    mutationFn: (payload: typeof emptyAdjustForm & { branchId: string }) => api.post("/inventory/adjust", payload),
+    onSuccess: () => {
+      invalidateInventory();
+      setAdjustForm(null);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to adjust stock");
+    },
+  });
+
+  function handleCreateBatch(e: FormEvent) {
+    e.preventDefault();
+    createBatchMutation.mutate({ ...batchForm, branchId, expiryDate: new Date(batchForm.expiryDate).toISOString() });
   }
 
-  async function handleAdjust(e: FormEvent) {
+  function handleAdjust(e: FormEvent) {
     e.preventDefault();
     if (!adjustForm) return;
-    setError(null);
-    try {
-      await api.post("/inventory/adjust", { ...adjustForm, branchId });
-      setAdjustForm(null);
-      await loadStock(branchId);
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to adjust stock");
-    }
+    adjustMutation.mutate({ ...adjustForm, branchId });
   }
 
   return (
@@ -158,8 +180,8 @@ export function InventoryPage() {
               <input type="number" className="form-control" required value={batchForm.quantity} onChange={(e) => setBatchForm({ ...batchForm, quantity: Number(e.target.value) })} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save batch
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createBatchMutation.isPending}>
+            {createBatchMutation.isPending ? "Saving..." : "Save batch"}
           </button>
         </form>
       )}
@@ -198,8 +220,8 @@ export function InventoryPage() {
               <input className="form-control" value={adjustForm.notes} onChange={(e) => setAdjustForm({ ...adjustForm, notes: e.target.value })} />
             </div>
             <div className="col-md-1 d-flex align-items-end">
-              <button type="submit" className="btn btn-primary w-100">
-                Save
+              <button type="submit" className="btn btn-primary w-100" disabled={adjustMutation.isPending}>
+                {adjustMutation.isPending ? "..." : "Save"}
               </button>
             </div>
           </div>

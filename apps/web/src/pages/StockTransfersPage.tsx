@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
@@ -26,33 +27,29 @@ const emptyForm = { fromBranchId: "", toBranchId: "", batchId: "", quantity: 1 }
 
 export function StockTransfersPage() {
   const { hasPermission } = useAuth();
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [batches, setBatches] = useState<Batch[]>([]);
+  const queryClient = useQueryClient();
   const [batchSearch, setBatchSearch] = useState("");
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  async function loadTransfers() {
-    setLoading(true);
-    const res = await api.get<{ data: Transfer[] }>("/stock-transfers");
-    setTransfers(res.data.data);
-    setLoading(false);
-  }
+  const { data: branches = [] } = useQuery({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
+
+  const { data: transfers = [], isLoading } = useQuery({
+    queryKey: ["stock-transfers"],
+    queryFn: async () => (await api.get<{ data: Transfer[] }>("/stock-transfers")).data.data,
+  });
+
+  const { data: batches = [] } = useQuery({
+    queryKey: ["batches", form.fromBranchId, "available"],
+    queryFn: async () => (await api.get<{ data: Batch[] }>("/batches", { params: { branchId: form.fromBranchId, status: "available" } })).data.data,
+    enabled: !!form.fromBranchId,
+  });
 
   useEffect(() => {
-    api.get<{ data: Branch[] }>("/branches").then((res) => setBranches(res.data.data));
-    loadTransfers();
-  }, []);
-
-  useEffect(() => {
-    if (form.fromBranchId) {
-      api.get<{ data: Batch[] }>("/batches", { params: { branchId: form.fromBranchId, status: "available" } }).then((res) => setBatches(res.data.data));
-    } else {
-      setBatches([]);
-    }
     setBatchSearch("");
   }, [form.fromBranchId]);
 
@@ -69,7 +66,39 @@ export function StockTransfersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchSearch, batches]);
 
-  async function handleCreate(e: FormEvent) {
+  function invalidateTransfers() {
+    queryClient.invalidateQueries({ queryKey: ["stock-transfers"] });
+    queryClient.invalidateQueries({ queryKey: ["batches"] });
+    queryClient.invalidateQueries({ queryKey: ["inventory", "stock"] });
+  }
+
+  const createMutation = useMutation({
+    mutationFn: (payload: { fromBranchId: string; toBranchId: string; items: { productId: string; batchId: string; quantity: number }[] }) =>
+      api.post("/stock-transfers", payload),
+    onSuccess: () => {
+      invalidateTransfers();
+      setShowForm(false);
+      setForm(emptyForm);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create transfer");
+    },
+  });
+
+  const actionMutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "approve" | "reject" | "dispatch" | "receive" }) =>
+      api.put(`/stock-transfers/${id}/${action}`),
+    onSuccess: () => {
+      invalidateTransfers();
+      setError(null);
+    },
+    onError: (err, variables) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : `Failed to ${variables.action}`);
+    },
+  });
+
+  function handleCreate(e: FormEvent) {
     e.preventDefault();
     setError(null);
     const batch = batches.find((b) => b.id === form.batchId);
@@ -77,28 +106,15 @@ export function StockTransfersPage() {
       setError("Select a batch");
       return;
     }
-    try {
-      await api.post("/stock-transfers", {
-        fromBranchId: form.fromBranchId,
-        toBranchId: form.toBranchId,
-        items: [{ productId: batch.product.id, batchId: batch.id, quantity: form.quantity }],
-      });
-      setShowForm(false);
-      setForm(emptyForm);
-      await loadTransfers();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to create transfer");
-    }
+    createMutation.mutate({
+      fromBranchId: form.fromBranchId,
+      toBranchId: form.toBranchId,
+      items: [{ productId: batch.product.id, batchId: batch.id, quantity: form.quantity }],
+    });
   }
 
-  async function doAction(id: string, action: "approve" | "reject" | "dispatch" | "receive") {
-    setError(null);
-    try {
-      await api.put(`/stock-transfers/${id}/${action}`);
-      await loadTransfers();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : `Failed to ${action}`);
-    }
+  function doAction(id: string, action: "approve" | "reject" | "dispatch" | "receive") {
+    actionMutation.mutate({ id, action });
   }
 
   const statusBadge = (status: string) => {
@@ -174,8 +190,8 @@ export function StockTransfersPage() {
               <input type="number" className="form-control" min={1} required value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Request transfer
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Saving..." : "Request transfer"}
           </button>
         </form>
       )}
@@ -193,7 +209,7 @@ export function StockTransfersPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={6} className="text-center text-muted py-4">
                   Loading...

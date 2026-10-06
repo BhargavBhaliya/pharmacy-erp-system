@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { platformApi } from "../api/platformClient";
 import { Pagination } from "../components/Pagination";
 
@@ -31,17 +32,13 @@ type FilterMode = "all" | "overdue" | "no_plan";
 
 export function BillingOverviewPage() {
   const navigate = useNavigate();
-  const [rows, setRows] = useState<BillingRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterMode>("all");
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    platformApi.get<{ data: BillingRow[] }>("/billing-overview").then((res) => {
-      setRows(res.data.data);
-      setLoading(false);
-    });
-  }, []);
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: ["platform", "billing-overview"],
+    queryFn: async () => (await platformApi.get<{ data: BillingRow[] }>("/billing-overview")).data.data,
+  });
 
   useEffect(() => {
     setPage(1);
@@ -115,14 +112,14 @@ export function BillingOverviewPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {isLoading && (
               <tr>
                 <td colSpan={6} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
             )}
-            {!loading && filtered.length === 0 && (
+            {!isLoading && filtered.length === 0 && (
               <tr>
                 <td colSpan={6} className="text-center text-muted py-4">
                   No stores match this filter.
