@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { usePlatformAuth } from "../auth/PlatformAuthContext";
 import { platformApi } from "../api/platformClient";
+import { countActionableAlerts } from "../lib/billingAlerts";
 
 const NAV_ITEMS = [
   { to: "/platform/dashboard", label: "Dashboard" },
@@ -33,10 +34,10 @@ export function PlatformLayout() {
   // no manual per-navigation refetch needed.
   const { data: billingOverview = [] } = useQuery({
     queryKey: ["platform", "billing-overview"],
-    queryFn: async () => (await platformApi.get<{ data: { isOverdue: boolean }[] }>("/billing-overview")).data.data,
+    queryFn: async () => (await platformApi.get<{ data: { isOverdue: boolean; status: string; nextDueDate: string | null }[] }>("/billing-overview")).data.data,
     refetchInterval: 60_000,
   });
-  const overdueCount = billingOverview.filter((s) => s.isOverdue).length;
+  const overdueCount = countActionableAlerts(billingOverview);
 
   const searchQuery = useQuery({
     queryKey: ["platform", "global-search", query],
