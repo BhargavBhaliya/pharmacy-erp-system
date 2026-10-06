@@ -5,7 +5,8 @@ import { platformApi } from "../api/platformClient";
 
 const NAV_ITEMS = [
   { to: "/platform/stores", label: "Stores" },
-  { to: "/platform/billing", label: "Billing & Subscriptions", badgeKey: "overdue" as const },
+  { to: "/platform/notifications", label: "Notifications", badgeKey: "overdue" as const },
+  { to: "/platform/billing", label: "Billing & Subscriptions" },
 ];
 
 // Mirrors the tenant AppLayout's left-sidebar shape exactly, but visually distinct (dark

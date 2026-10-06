@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { isAxiosError } from "axios";
 import { platformApi } from "../api/platformClient";
 
 interface BillingRow {
@@ -32,21 +31,12 @@ export function BillingOverviewPage() {
   const [rows, setRows] = useState<BillingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterMode>("all");
-  const [renewingId, setRenewingId] = useState<string | null>(null);
-  const [renewAmount, setRenewAmount] = useState("");
-  const [renewMode, setRenewMode] = useState("CASH");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function load() {
-    setLoading(true);
-    const res = await platformApi.get<{ data: BillingRow[] }>("/billing-overview");
-    setRows(res.data.data);
-    setLoading(false);
-  }
 
   useEffect(() => {
-    load();
+    platformApi.get<{ data: BillingRow[] }>("/billing-overview").then((res) => {
+      setRows(res.data.data);
+      setLoading(false);
+    });
   }, []);
 
   const filtered = rows.filter((r) => {
@@ -58,40 +48,14 @@ export function BillingOverviewPage() {
   const overdueCount = rows.filter((r) => r.isOverdue).length;
   const noPlanCount = rows.filter((r) => r.status === "NO_PLAN").length;
 
-  function startRenew(e: React.MouseEvent, row: BillingRow) {
-    e.stopPropagation();
-    setError(null);
-    setRenewingId(row.id);
-    setRenewAmount(row.amount ?? "");
-    setRenewMode("CASH");
-  }
-
-  async function confirmRenew(e: React.MouseEvent, tenantId: string) {
-    e.stopPropagation();
-    setError(null);
-    if (!renewAmount || Number(renewAmount) <= 0) {
-      setError("Enter a valid amount");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await platformApi.post(`/stores/${tenantId}/payments`, {
-        amount: Number(renewAmount),
-        paymentMode: renewMode,
-        extendDueDate: true,
-      });
-      setRenewingId(null);
-      await load();
-    } catch (err) {
-      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record payment");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
     <div>
       <h3 className="mb-4">Billing & Subscriptions</h3>
+      <p className="text-muted mb-4">
+        Every store's plan at a glance. Overdue renewals with a quick "Renew" action live under{" "}
+        <strong>Notifications</strong> in the sidebar — this page is for reviewing/editing plans; click a row to open
+        that store and manage its plan in detail.
+      </p>
 
       <div className="row g-3 mb-4">
         <div className="col-md-3">
@@ -113,8 +77,6 @@ export function BillingOverviewPage() {
           </div>
         </div>
       </div>
-
-      {error && <div className="alert alert-danger py-2">{error}</div>}
 
       <div className="btn-group mb-3">
         {(["all", "overdue", "no_plan"] as const).map((m) => (
@@ -139,20 +101,19 @@ export function BillingOverviewPage() {
               <th>Amount</th>
               <th>Status</th>
               <th>Next due</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={7} className="text-center text-muted py-4">
+                <td colSpan={6} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
             )}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center text-muted py-4">
+                <td colSpan={6} className="text-center text-muted py-4">
                   No stores match this filter.
                 </td>
               </tr>
@@ -172,37 +133,6 @@ export function BillingOverviewPage() {
                 <td className={r.isOverdue ? "text-danger fw-semibold" : ""}>
                   {r.nextDueDate ? new Date(r.nextDueDate).toLocaleDateString() : "—"}
                   {r.isOverdue && " (overdue)"}
-                </td>
-                <td className="text-end">
-                  {r.status !== "NO_PLAN" &&
-                    (renewingId === r.id ? (
-                      <div className="d-flex gap-1 justify-content-end align-items-center" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="number"
-                          className="form-control form-control-sm"
-                          style={{ width: 90 }}
-                          value={renewAmount}
-                          onChange={(e) => setRenewAmount(e.target.value)}
-                        />
-                        <select className="form-select form-select-sm" style={{ width: 90 }} value={renewMode} onChange={(e) => setRenewMode(e.target.value)}>
-                          {["CASH", "UPI", "CARD", "BANK_TRANSFER", "CHEQUE", "OTHER"].map((m) => (
-                            <option key={m} value={m}>
-                              {m}
-                            </option>
-                          ))}
-                        </select>
-                        <button className="btn btn-sm btn-success" disabled={submitting} onClick={(e) => confirmRenew(e, r.id)}>
-                          {submitting ? "..." : "Confirm"}
-                        </button>
-                        <button className="btn btn-sm btn-outline-secondary" onClick={(e) => { e.stopPropagation(); setRenewingId(null); }}>
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button className={`btn btn-sm ${r.isOverdue ? "btn-danger" : "btn-outline-success"}`} onClick={(e) => startRenew(e, r)}>
-                        Renew
-                      </button>
-                    ))}
                 </td>
               </tr>
             ))}
