@@ -64,6 +64,13 @@ interface Payment {
   referenceNumber: string | null;
 }
 
+interface StoreNote {
+  id: string;
+  note: string;
+  createdByName: string;
+  createdAt: string;
+}
+
 const SUBSCRIPTION_STATUS_BADGE: Record<string, string> = {
   TRIAL: "text-bg-info",
   ACTIVE: "text-bg-success",
@@ -99,6 +106,7 @@ export function StoreDetailPage() {
 
   const [subForm, setSubForm] = useState({ planName: "Standard", billingCycle: "MONTHLY", amount: "0", status: "TRIAL", nextDueDate: "", notes: "" });
   const [paymentForm, setPaymentForm] = useState({ amount: "", paymentMode: "CASH", referenceNumber: "", notes: "", extendDueDate: true });
+  const [newNote, setNewNote] = useState("");
 
   const storeQuery = useQuery({
     queryKey: ["platform", "store", id, "detail"],
@@ -128,6 +136,12 @@ export function StoreDetailPage() {
   const { data: payments = [] } = useQuery({
     queryKey: ["platform", "store", id, "payments"],
     queryFn: async () => (await platformApi.get<{ data: Payment[] }>(`/stores/${id}/payments`)).data.data,
+    enabled: !!id,
+  });
+
+  const { data: storeNotes = [] } = useQuery({
+    queryKey: ["platform", "store", id, "notes"],
+    queryFn: async () => (await platformApi.get<{ data: StoreNote[] }>(`/stores/${id}/notes`)).data.data,
     enabled: !!id,
   });
 
@@ -244,6 +258,21 @@ export function StoreDetailPage() {
       nextDueDate: subForm.nextDueDate || undefined,
       notes: subForm.notes || undefined,
     });
+  }
+
+  const addNoteMutation = useMutation({
+    mutationFn: (note: string) => platformApi.post(`/stores/${id}/notes`, { note }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["platform", "store", id, "notes"] });
+      setNewNote("");
+    },
+    onError: (err) => setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to add note"),
+  });
+
+  function handleAddNote() {
+    if (!newNote.trim()) return;
+    setError(null);
+    addNoteMutation.mutate(newNote.trim());
   }
 
   function handleRecordPayment() {
@@ -476,6 +505,34 @@ export function StoreDetailPage() {
                 </div>
               </>
             )}
+          </div>
+
+          <div className="card card-body mb-3">
+            <h6 className="mb-3">Internal notes</h6>
+            <div className="text-muted small mb-2">Only visible to you — never shown to the store.</div>
+            <div className="d-flex gap-2 mb-3">
+              <input
+                className="form-control form-control-sm"
+                placeholder="Add a note (e.g. called about billing)..."
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddNote()}
+              />
+              <button className="btn btn-sm btn-dark" disabled={addNoteMutation.isPending || !newNote.trim()} onClick={handleAddNote}>
+                {addNoteMutation.isPending ? "..." : "Add"}
+              </button>
+            </div>
+            {storeNotes.length === 0 && <div className="text-muted small">No notes yet.</div>}
+            <div style={{ maxHeight: 240, overflowY: "auto" }}>
+              {storeNotes.map((n) => (
+                <div key={n.id} className="border-bottom pb-2 mb-2 small">
+                  <div>{n.note}</div>
+                  <div className="text-muted">
+                    {n.createdByName} · {new Date(n.createdAt).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="card card-body">

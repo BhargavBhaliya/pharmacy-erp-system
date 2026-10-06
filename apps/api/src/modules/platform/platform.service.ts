@@ -9,7 +9,15 @@ import { generateRefreshToken, hashRefreshToken, refreshTokenExpiryDate, signAcc
 import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
 import { recordPlatformAudit } from "./platform-audit";
 import { createExchangeCode } from "./impersonation-store";
-import type { CreateStoreInput, ListStoresQuery, RecordPaymentInput, UpdateStoreInput, UpsertSubscriptionInput } from "./platform.validation";
+import type {
+  BulkStoreActionInput,
+  CreateStoreInput,
+  CreateStoreNoteInput,
+  ListStoresQuery,
+  RecordPaymentInput,
+  UpdateStoreInput,
+  UpsertSubscriptionInput,
+} from "./platform.validation";
 
 // Deliberately a near-duplicate of auth.service.ts's registerBusiness rather than a call
 // through to it: registerBusiness's signature/return shape is a public contract already
@@ -125,6 +133,41 @@ export async function setStoreActive(req: Request, tenantId: string, isActive: b
   return tenant;
 }
 
+// Applies activate/deactivate to several stores in one request, skipping any id that doesn't
+// exist rather than failing the whole batch — a typo'd/stale id in a bulk selection shouldn't
+// block the stores that are valid. Each store still gets its own audit row, same as the
+// single-store endpoint, so a bulk action is exactly as visible to each store as an individual
+// one. Unlike recordPlatformAudit elsewhere (deliberately fire-and-forget for single actions),
+// these rows are written with a single awaited createMany — a bulk action over many stores
+// should give the caller a stronger guarantee that every row landed before the response returns,
+// not a loop of unawaited writes racing the HTTP response.
+export async function bulkSetStoreActive(req: Request, tenantIds: string[], isActive: boolean) {
+  const existing = await prisma.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true } });
+  const existingIds = existing.map((t) => t.id);
+
+  if (existingIds.length > 0) {
+    const admin = req.platformAdmin!;
+    await prisma.$transaction([
+      prisma.tenant.updateMany({ where: { id: { in: existingIds } }, data: { isActive } }),
+      prisma.auditLog.createMany({
+        data: existingIds.map((tenantId) => ({
+          tenantId,
+          userId: null,
+          module: "platform_admin",
+          action: isActive ? "activate_store" : "deactivate_store",
+          entityType: "Tenant",
+          entityId: tenantId,
+          newValue: { platformAdminId: admin.id, platformAdminEmail: admin.email, bulk: true },
+          ipAddress: req.ip,
+          userAgent: req.get("user-agent") ?? undefined,
+        })),
+      }),
+    ]);
+  }
+
+  return { updatedCount: existingIds.length, skippedIds: tenantIds.filter((id) => !existingIds.includes(id)) };
+}
+
 const storeUserSelect = {
   id: true,
   name: true,
@@ -223,6 +266,27 @@ export async function getStoreActivity(tenantId: string) {
     stats: { userCount: tenant._count.users, branchCount: tenant._count.branches },
     recentAuditLogs,
   };
+}
+
+// --- Internal support notes -------------------------------------------------------------
+
+export async function listStoreNotes(tenantId: string) {
+  await requireStore(tenantId);
+  return prisma.storeNote.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" } });
+}
+
+export async function addStoreNote(req: Request, tenantId: string, input: CreateStoreNoteInput) {
+  await requireStore(tenantId);
+  const note = await prisma.storeNote.create({
+    data: {
+      tenantId,
+      note: input.note,
+      createdByName: req.platformAdmin!.name,
+      createdByEmail: req.platformAdmin!.email,
+    },
+  });
+  recordPlatformAudit({ req, tenantId, action: "add_note", entityType: "StoreNote", entityId: note.id });
+  return note;
 }
 
 // --- Subscription & payments ---------------------------------------------------------------

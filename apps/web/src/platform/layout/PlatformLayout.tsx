@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useRef, useState } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { usePlatformAuth } from "../auth/PlatformAuthContext";
 import { platformApi } from "../api/platformClient";
 
@@ -11,22 +12,45 @@ const NAV_ITEMS = [
   { to: "/platform/settings", label: "Settings" },
 ];
 
+interface SearchStore {
+  id: string;
+  storeCode: string;
+  businessName: string;
+}
+
 // Mirrors the tenant AppLayout's left-sidebar shape exactly, but visually distinct (dark
 // accent throughout, different brand text) so there is never any ambiguity about which
 // "mode" — platform admin vs. inside a store — the current browser tab is in.
 export function PlatformLayout() {
   const { admin, logout } = usePlatformAuth();
-  const location = useLocation();
-  const [overdueCount, setOverdueCount] = useState(0);
+  const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const blurTimeout = useRef<number>();
 
-  // Refetched on every navigation so renewing a store's plan (from Billing or a store's own
-  // detail page) clears the badge without needing a manual page reload.
-  useEffect(() => {
-    platformApi
-      .get<{ data: { isOverdue: boolean }[] }>("/billing-overview")
-      .then((res) => setOverdueCount(res.data.data.filter((s) => s.isOverdue).length))
-      .catch(() => undefined);
-  }, [location.pathname]);
+  // Shares its queryKey with BillingOverviewPage/NotificationsPage, so recording a payment or
+  // renewing a plan anywhere in the app invalidates this cache too — the badge updates itself,
+  // no manual per-navigation refetch needed.
+  const { data: billingOverview = [] } = useQuery({
+    queryKey: ["platform", "billing-overview"],
+    queryFn: async () => (await platformApi.get<{ data: { isOverdue: boolean }[] }>("/billing-overview")).data.data,
+    refetchInterval: 60_000,
+  });
+  const overdueCount = billingOverview.filter((s) => s.isOverdue).length;
+
+  const searchQuery = useQuery({
+    queryKey: ["platform", "global-search", query],
+    queryFn: async () =>
+      (await platformApi.get<{ data: SearchStore[] }>("/stores", { params: { search: query, pageSize: 8 } })).data.data,
+    enabled: query.trim().length >= 2,
+  });
+  const results = query.trim().length < 2 ? [] : searchQuery.data ?? [];
+
+  function goToStore(id: string) {
+    setQuery("");
+    setOpen(false);
+    navigate(`/platform/stores/${id}`);
+  }
 
   return (
     <div className="d-flex vh-100">
@@ -55,7 +79,43 @@ export function PlatformLayout() {
         </div>
       </nav>
       <main className="flex-grow-1 overflow-auto bg-light">
-        <div className="container-fluid p-4">
+        <div className="container-fluid p-3 pb-0">
+          <div className="position-relative" style={{ maxWidth: 420 }}>
+            <input
+              className="form-control"
+              placeholder="Search any store by name, code, or email..."
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setOpen(true);
+              }}
+              onFocus={() => setOpen(true)}
+              onBlur={() => {
+                // Delay so a click on a result registers before the dropdown closes.
+                blurTimeout.current = window.setTimeout(() => setOpen(false), 150);
+              }}
+            />
+            {open && results.length > 0 && (
+              <div className="list-group position-absolute w-100 shadow" style={{ zIndex: 20 }}>
+                {results.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className="list-group-item list-group-item-action"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      window.clearTimeout(blurTimeout.current);
+                      goToStore(s.id);
+                    }}
+                  >
+                    <span className="fw-semibold">{s.storeCode}</span> — {s.businessName}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="container-fluid p-4 pt-3">
           <Outlet />
         </div>
       </main>

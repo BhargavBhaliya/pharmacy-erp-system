@@ -79,3 +79,13 @@ export const recordPaymentSchema = z.object({
   extendDueDate: z.boolean().default(true),
 });
 export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;
+
+export const createStoreNoteSchema = z.object({
+  note: z.string().min(1).max(4000),
+});
+export type CreateStoreNoteInput = z.infer<typeof createStoreNoteSchema>;
+
+export const bulkStoreActionSchema = z.object({
+  tenantIds: z.array(z.string().min(1)).min(1).max(200),
+});
+export type BulkStoreActionInput = z.infer<typeof bulkStoreActionSchema>;

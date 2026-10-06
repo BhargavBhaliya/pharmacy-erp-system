@@ -5,7 +5,9 @@ import { authenticatePlatformAdmin } from "../../middleware/platformAuth";
 import { UnauthorizedError } from "../../lib/errors";
 import { env } from "../../config/env";
 import {
+  bulkStoreActionSchema,
   changePlatformAdminPasswordSchema,
+  createStoreNoteSchema,
   createStoreSchema,
   listStoresQuerySchema,
   platformLoginSchema,
@@ -133,6 +135,26 @@ platformRouter.post("/stores", validateBody(createStoreSchema), async (req, res,
   }
 });
 
+// Must come before "/stores/:tenantId" — otherwise Express would match "bulk-activate" as a
+// :tenantId value.
+platformRouter.post("/stores/bulk-activate", validateBody(bulkStoreActionSchema), async (req, res, next) => {
+  try {
+    const result = await platformService.bulkSetStoreActive(req, req.body.tenantIds, true);
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformRouter.post("/stores/bulk-deactivate", validateBody(bulkStoreActionSchema), async (req, res, next) => {
+  try {
+    const result = await platformService.bulkSetStoreActive(req, req.body.tenantIds, false);
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 platformRouter.get("/stores/:tenantId", async (req, res, next) => {
   try {
     const tenant = await platformService.getStoreDetail(req.params.tenantId);
@@ -209,6 +231,24 @@ platformRouter.get("/stores/:tenantId/activity", async (req, res, next) => {
   try {
     const result = await platformService.getStoreActivity(req.params.tenantId);
     res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformRouter.get("/stores/:tenantId/notes", async (req, res, next) => {
+  try {
+    const notes = await platformService.listStoreNotes(req.params.tenantId);
+    res.json({ data: notes });
+  } catch (err) {
+    next(err);
+  }
+});
+
+platformRouter.post("/stores/:tenantId/notes", validateBody(createStoreNoteSchema), async (req, res, next) => {
+  try {
+    const note = await platformService.addStoreNote(req, req.params.tenantId, req.body);
+    res.status(201).json({ data: note });
   } catch (err) {
     next(err);
   }

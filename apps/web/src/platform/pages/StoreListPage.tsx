@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { platformApi } from "../api/platformClient";
 import { Pagination } from "../components/Pagination";
 
@@ -33,10 +33,12 @@ const SUBSCRIPTION_BADGE: Record<string, string> = {
 
 export function StoreListPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<"" | "true" | "false">("");
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["platform", "stores", search, activeFilter, page],
@@ -55,6 +57,17 @@ export function StoreListPage() {
   const stores = data?.data ?? [];
   const total = data?.pagination.total ?? 0;
 
+  const bulkMutation = useMutation({
+    mutationFn: (payload: { tenantIds: string[]; activate: boolean }) =>
+      platformApi.post<{ data: { updatedCount: number } }>(`/stores/${payload.activate ? "bulk-activate" : "bulk-deactivate"}`, {
+        tenantIds: payload.tenantIds,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["platform", "stores"] });
+      setSelectedIds([]);
+    },
+  });
+
   function handleSearch(e: FormEvent) {
     e.preventDefault();
     setSearch(searchInput);
@@ -64,6 +77,14 @@ export function StoreListPage() {
   function handleActiveFilterChange(value: "" | "true" | "false") {
     setActiveFilter(value);
     setPage(1);
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => (prev.length === stores.length ? [] : stores.map((s) => s.id)));
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -99,12 +120,41 @@ export function StoreListPage() {
         </button>
       </form>
 
-      <div className="text-muted small mb-2">{isLoading ? "Loading..." : `${total} store(s) · page ${page} of ${totalPages}`}</div>
+      <div className="d-flex justify-content-between align-items-center mb-2">
+        <div className="text-muted small">{isLoading ? "Loading..." : `${total} store(s) · page ${page} of ${totalPages}`}</div>
+        {selectedIds.length > 0 && (
+          <div className="d-flex align-items-center gap-2">
+            <span className="small text-muted">{selectedIds.length} selected</span>
+            <button
+              className="btn btn-sm btn-outline-success"
+              disabled={bulkMutation.isPending}
+              onClick={() => bulkMutation.mutate({ tenantIds: selectedIds, activate: true })}
+            >
+              Activate
+            </button>
+            <button
+              className="btn btn-sm btn-outline-secondary"
+              disabled={bulkMutation.isPending}
+              onClick={() => bulkMutation.mutate({ tenantIds: selectedIds, activate: false })}
+            >
+              Deactivate
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="card">
         <table className="table table-hover mb-0">
           <thead>
             <tr>
+              <th style={{ width: 36 }}>
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  checked={stores.length > 0 && selectedIds.length === stores.length}
+                  onChange={toggleSelectAll}
+                />
+              </th>
               <th>Store Code</th>
               <th>Business Name</th>
               <th>Owner</th>
@@ -117,22 +167,34 @@ export function StoreListPage() {
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={7} className="text-center text-muted py-4">
+                <td colSpan={8} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
             )}
             {!isLoading && stores.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center text-muted py-4">
+                <td colSpan={8} className="text-center text-muted py-4">
                   No stores found.
                 </td>
               </tr>
             )}
             {stores.map((s) => (
-              <tr key={s.id} role="button" style={{ cursor: "pointer" }} onClick={() => navigate(`/platform/stores/${s.id}`)}>
-                <td className="fw-semibold">{s.storeCode}</td>
-                <td>{s.businessName}</td>
+              <tr key={s.id}>
+                <td onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
+                    checked={selectedIds.includes(s.id)}
+                    onChange={() => toggleSelected(s.id)}
+                  />
+                </td>
+                <td className="fw-semibold" role="button" style={{ cursor: "pointer" }} onClick={() => navigate(`/platform/stores/${s.id}`)}>
+                  {s.storeCode}
+                </td>
+                <td role="button" style={{ cursor: "pointer" }} onClick={() => navigate(`/platform/stores/${s.id}`)}>
+                  {s.businessName}
+                </td>
                 <td>{s.ownerName ?? "—"}</td>
                 <td>{s.userCount}</td>
                 <td>{s.branchCount}</td>

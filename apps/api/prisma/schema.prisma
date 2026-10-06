@@ -76,6 +76,7 @@ model Tenant {
   notifications     Notification[]
   subscription      StoreSubscription?
   storePayments     StorePayment[]
+  storeNotes        StoreNote[]
 
   @@map("tenants")
 }
@@ -177,6 +178,25 @@ model StorePayment {
 
   @@index([tenantId, paymentDate])
   @@map("store_payments")
+}
+
+// Internal, append-only support notes a Platform Admin leaves on a store ("called about billing
+// issue", etc.) — never visible to the store itself, purely for the admin's own record-keeping.
+// No platformAdminId FK: there is exactly one Platform Admin by design (see PlatformAdmin's own
+// comment), so the name is captured as a plain string at write time rather than relating to a
+// row that could theoretically be deleted/recreated.
+model StoreNote {
+  id              String   @id @default(cuid())
+  tenantId        String
+  note            String   @db.Text
+  createdByName   String
+  createdByEmail  String
+  createdAt       DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("store_notes")
 }
 
 model Branch {

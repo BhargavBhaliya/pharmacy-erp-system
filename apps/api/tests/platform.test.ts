@@ -272,6 +272,61 @@ describe("platform store management", () => {
     ).toBe(true);
   });
 
+  it("bulk-activate and bulk-deactivate update every valid store and skip nonexistent ids, each with its own audit row", async () => {
+    const token = await platformLogin();
+    const storeA = await createStore(token, { businessName: "Bulk Store A", email: uniqueEmail("bulk-a") });
+    const storeB = await createStore(token, { businessName: "Bulk Store B", email: uniqueEmail("bulk-b") });
+    const idA = storeA.body.tenant.id;
+    const idB = storeB.body.tenant.id;
+
+    const deactivate = await request(app)
+      .post("/api/platform/stores/bulk-deactivate")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ tenantIds: [idA, idB, "does-not-exist"] });
+    expect(deactivate.status).toBe(200);
+    expect(deactivate.body.data.updatedCount).toBe(2);
+    expect(deactivate.body.data.skippedIds).toEqual(["does-not-exist"]);
+
+    const refetchedA = await prisma.tenant.findUnique({ where: { id: idA } });
+    const refetchedB = await prisma.tenant.findUnique({ where: { id: idB } });
+    expect(refetchedA?.isActive).toBe(false);
+    expect(refetchedB?.isActive).toBe(false);
+
+    const auditA = await prisma.auditLog.findFirst({ where: { tenantId: idA, action: "deactivate_store" } });
+    const auditB = await prisma.auditLog.findFirst({ where: { tenantId: idB, action: "deactivate_store" } });
+    expect(auditA).toBeTruthy();
+    expect(auditB).toBeTruthy();
+
+    const reactivate = await request(app)
+      .post("/api/platform/stores/bulk-activate")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ tenantIds: [idA, idB] });
+    expect(reactivate.status).toBe(200);
+    expect(reactivate.body.data.updatedCount).toBe(2);
+  });
+
+  it("store notes can be added and listed, and never leak across tenants", async () => {
+    const token = await platformLogin();
+    const storeA = await createStore(token, { businessName: "Notes Store A", email: uniqueEmail("notes-a") });
+    const storeB = await createStore(token, { businessName: "Notes Store B", email: uniqueEmail("notes-b") });
+    const idA = storeA.body.tenant.id;
+    const idB = storeB.body.tenant.id;
+
+    const addToA = await request(app)
+      .post(`/api/platform/stores/${idA}/notes`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ note: "Called about a billing question" });
+    expect(addToA.status).toBe(201);
+    expect(addToA.body.data.note).toBe("Called about a billing question");
+    expect(addToA.body.data.createdByEmail).toBe(PLATFORM_ADMIN_EMAIL);
+
+    const notesA = await request(app).get(`/api/platform/stores/${idA}/notes`).set("Authorization", `Bearer ${token}`);
+    expect(notesA.body.data).toHaveLength(1);
+
+    const notesB = await request(app).get(`/api/platform/stores/${idB}/notes`).set("Authorization", `Bearer ${token}`);
+    expect(notesB.body.data).toHaveLength(0);
+  });
+
   it("a non-platform-admin tenant Super Admin cannot access any /api/platform/* route", async () => {
     const tenantLogin = await request(app).post("/api/auth/register-business").send({
       businessName: "Not Platform Admin Pharmacy",
