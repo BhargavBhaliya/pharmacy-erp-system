@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { platformApi } from "../api/platformClient";
+import { Pagination } from "../components/Pagination";
+
+const PAGE_SIZE = 10;
 
 interface Store {
   id: string;
@@ -33,25 +36,36 @@ export function StoreListPage() {
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<"" | "true" | "false">("");
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  async function load() {
+  async function load(targetPage: number) {
     setLoading(true);
-    const res = await platformApi.get<{ data: Store[] }>("/stores", {
-      params: { ...(search ? { search } : {}), ...(activeFilter ? { isActive: activeFilter } : {}) },
+    const res = await platformApi.get<{ data: Store[]; pagination: { total: number } }>("/stores", {
+      params: {
+        ...(search ? { search } : {}),
+        ...(activeFilter ? { isActive: activeFilter } : {}),
+        page: targetPage,
+        pageSize: PAGE_SIZE,
+      },
     });
     setStores(res.data.data);
+    setTotal(res.data.pagination.total);
+    setPage(targetPage);
     setLoading(false);
   }
 
   useEffect(() => {
-    load();
+    load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeFilter]);
 
   function handleSearch(e: FormEvent) {
     e.preventDefault();
-    load();
+    load(1);
   }
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div>
@@ -78,6 +92,8 @@ export function StoreListPage() {
           Search
         </button>
       </form>
+
+      <div className="text-muted small mb-2">{loading ? "Loading..." : `${total} store(s) · page ${page} of ${totalPages}`}</div>
 
       <div className="card">
         <table className="table table-hover mb-0">
@@ -135,6 +151,8 @@ export function StoreListPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={load} />
     </div>
   );
 }

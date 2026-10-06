@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { platformApi } from "../api/platformClient";
+import { Pagination } from "../components/Pagination";
+
+const PAGE_SIZE = 10;
 
 interface BillingRow {
   id: string;
@@ -31,6 +34,7 @@ export function BillingOverviewPage() {
   const [rows, setRows] = useState<BillingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterMode>("all");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     platformApi.get<{ data: BillingRow[] }>("/billing-overview").then((res) => {
@@ -39,11 +43,18 @@ export function BillingOverviewPage() {
     });
   }, []);
 
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
+
   const filtered = rows.filter((r) => {
     if (filter === "overdue") return r.isOverdue;
     if (filter === "no_plan") return r.status === "NO_PLAN";
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const overdueCount = rows.filter((r) => r.isOverdue).length;
   const noPlanCount = rows.filter((r) => r.status === "NO_PLAN").length;
@@ -118,7 +129,7 @@ export function BillingOverviewPage() {
                 </td>
               </tr>
             )}
-            {filtered.map((r) => (
+            {paged.map((r) => (
               <tr key={r.id} role="button" style={{ cursor: "pointer" }} onClick={() => navigate(`/platform/stores/${r.id}`)}>
                 <td>
                   <div className="fw-semibold">{r.businessName}</div>
@@ -139,6 +150,8 @@ export function BillingOverviewPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 }
