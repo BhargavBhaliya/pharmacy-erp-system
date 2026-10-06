@@ -17,7 +17,7 @@ customersRouter.get("/", requirePermission("customers", "view"), async (req, res
       where: {
         tenantId: req.user!.tenantId,
         ...(search
-          ? { OR: [{ name: { contains: search, mode: "insensitive" } }, { mobile: { contains: search, mode: "insensitive" } }] }
+          ? { OR: [{ name: { contains: search } }, { mobile: { contains: search } }] }
           : {}),
       },
       orderBy: { name: "asc" },

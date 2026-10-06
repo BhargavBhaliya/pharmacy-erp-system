@@ -55,9 +55,9 @@ export async function listStores(query: ListStoresQuery) {
     ...(query.search
       ? {
           OR: [
-            { businessName: { contains: query.search, mode: "insensitive" as const } },
-            { email: { contains: query.search, mode: "insensitive" as const } },
-            { storeCode: { contains: query.search, mode: "insensitive" as const } },
+            { businessName: { contains: query.search } },
+            { email: { contains: query.search } },
+            { storeCode: { contains: query.search } },
           ],
         }
       : {}),

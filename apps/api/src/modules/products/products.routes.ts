@@ -24,12 +24,14 @@ productsRouter.get("/", requirePermission("products", "view"), async (req, res, 
       ...(q.isActive !== undefined ? { isActive: q.isActive } : {}),
       ...(q.search
         ? {
+            // No `mode: "insensitive"` — that's a Postgres/MongoDB-only Prisma option. MySQL's
+            // default collation (utf8mb4_*_ci) is already case-insensitive for `contains`.
             OR: [
-              { name: { contains: q.search, mode: "insensitive" as const } },
-              { genericName: { contains: q.search, mode: "insensitive" as const } },
-              { brandName: { contains: q.search, mode: "insensitive" as const } },
-              { sku: { contains: q.search, mode: "insensitive" as const } },
-              { barcodes: { some: { barcode: { contains: q.search, mode: "insensitive" as const } } } },
+              { name: { contains: q.search } },
+              { genericName: { contains: q.search } },
+              { brandName: { contains: q.search } },
+              { sku: { contains: q.search } },
+              { barcodes: { some: { barcode: { contains: q.search } } } },
             ],
           }
         : {}),

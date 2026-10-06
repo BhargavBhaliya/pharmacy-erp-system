@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -78,6 +78,14 @@ model Tenant {
   storePayments     StorePayment[]
 
   @@map("tenants")
+}
+
+// Portable sequential-counter source for Tenant.storeCode (MySQL has no native sequences —
+// each inserted row's auto-increment id serves as the next counter value, see lib/storeCode.ts).
+model StoreCodeCounter {
+  id Int @id @default(autoincrement())
+
+  @@map("store_code_counters")
 }
 
 // ---------------------------------------------------------------------------
