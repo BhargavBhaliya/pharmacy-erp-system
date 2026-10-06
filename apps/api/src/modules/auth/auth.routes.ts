@@ -19,6 +19,9 @@ const cookieOptions = {
 
 // Auth endpoints are brute-force targets; throttle harder than the general API limiter.
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false });
+// Refresh tokens are 48 random bytes (infeasible to brute force), so this is about capping
+// abuse/DoS rather than guessing — a much higher ceiling than login is fine.
+const refreshLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false });
 
 authRouter.post("/register-business", authLimiter, validateBody(registerBusinessSchema), async (req, res, next) => {
   try {
@@ -43,7 +46,7 @@ authRouter.post("/login", authLimiter, validateBody(loginSchema), async (req, re
   }
 });
 
-authRouter.post("/refresh", async (req, res, next) => {
+authRouter.post("/refresh", refreshLimiter, async (req, res, next) => {
   try {
     const token = req.cookies?.[REFRESH_COOKIE];
     if (!token) throw new UnauthorizedError("Missing refresh token");
@@ -55,7 +58,7 @@ authRouter.post("/refresh", async (req, res, next) => {
   }
 });
 
-authRouter.post("/logout", async (req, res, next) => {
+authRouter.post("/logout", refreshLimiter, async (req, res, next) => {
   try {
     const token = req.cookies?.[REFRESH_COOKIE];
     if (token) await authService.logout(token);

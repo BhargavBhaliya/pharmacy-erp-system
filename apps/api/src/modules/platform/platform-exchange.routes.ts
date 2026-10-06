@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import rateLimit from "express-rate-limit";
 import { validateBody } from "../../middleware/validate";
 import { ValidationError } from "../../lib/errors";
 import { env } from "../../config/env";
@@ -22,7 +23,11 @@ const cookieOptions = {
 
 const exchangeSchema = z.object({ code: z.string().min(1) });
 
-platformExchangeRouter.post("/exchange-impersonation-code", validateBody(exchangeSchema), (req, res, next) => {
+// Codes are 24 random bytes (infeasible to brute force), so this caps abuse/DoS rather than
+// guessing — but still worth bounding since this endpoint needs no auth to call.
+const exchangeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false });
+
+platformExchangeRouter.post("/exchange-impersonation-code", exchangeLimiter, validateBody(exchangeSchema), (req, res, next) => {
   try {
     const result = consumeExchangeCode(req.body.code);
     if (!result) throw new ValidationError("This access link has expired or was already used");

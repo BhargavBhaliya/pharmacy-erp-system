@@ -29,6 +29,9 @@ const cookieOptions = {
 };
 
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false });
+// Refresh tokens are 48 random bytes (infeasible to brute force), so this is about capping
+// abuse/DoS rather than guessing — a much higher ceiling than login is fine.
+const refreshLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false });
 
 // --- Platform Admin auth -----------------------------------------------------------------
 
@@ -45,7 +48,7 @@ platformRouter.post("/auth/login", authLimiter, validateBody(platformLoginSchema
   }
 });
 
-platformRouter.post("/auth/refresh", async (req, res, next) => {
+platformRouter.post("/auth/refresh", refreshLimiter, async (req, res, next) => {
   try {
     const token = req.cookies?.[REFRESH_COOKIE];
     if (!token) throw new UnauthorizedError("Missing refresh token");
@@ -60,7 +63,7 @@ platformRouter.post("/auth/refresh", async (req, res, next) => {
   }
 });
 
-platformRouter.post("/auth/logout", async (req, res, next) => {
+platformRouter.post("/auth/logout", refreshLimiter, async (req, res, next) => {
   try {
     const token = req.cookies?.[REFRESH_COOKIE];
     if (token) await platformAuthService.platformLogout(token);
