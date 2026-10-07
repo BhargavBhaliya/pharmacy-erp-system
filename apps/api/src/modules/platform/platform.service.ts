@@ -345,6 +345,13 @@ export async function listStorePayments(tenantId: string) {
   return prisma.storePayment.findMany({ where: { tenantId }, orderBy: { paymentDate: "desc" } });
 }
 
+export async function getStorePayment(tenantId: string, paymentId: string) {
+  const tenant = await requireStore(tenantId);
+  const payment = await prisma.storePayment.findFirst({ where: { id: paymentId, tenantId } });
+  if (!payment) throw new NotFoundError("Payment not found");
+  return { payment, store: { businessName: tenant.businessName, storeCode: tenant.storeCode } };
+}
+
 // One row per store across the whole platform — lets the admin scan 50+ stores for who's
 // overdue without opening each one individually.
 export async function getBillingOverview() {

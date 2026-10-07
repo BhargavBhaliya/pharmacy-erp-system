@@ -494,12 +494,17 @@ export function StoreDetailPage() {
                 <h6 className="mb-2">Payment history</h6>
                 <div style={{ maxHeight: 200, overflowY: "auto" }}>
                   {payments.map((p) => (
-                    <div key={p.id} className="d-flex justify-content-between small border-bottom pb-1 mb-1">
+                    <div key={p.id} className="d-flex justify-content-between align-items-center small border-bottom pb-1 mb-1">
                       <span>
                         ₹{p.amount} · {p.paymentMode}
                         {p.referenceNumber ? ` · ${p.referenceNumber}` : ""}
                       </span>
-                      <span className="text-muted">{new Date(p.paymentDate).toLocaleDateString()}</span>
+                      <span className="d-flex align-items-center gap-2">
+                        <span className="text-muted">{new Date(p.paymentDate).toLocaleDateString()}</span>
+                        <Link to={`/platform/stores/${id}/payments/${p.id}/receipt`} target="_blank" className="text-decoration-none">
+                          Print
+                        </Link>
+                      </span>
                     </div>
                   ))}
                 </div>

@@ -39,6 +39,7 @@ import { PlatformLoginPage } from "./platform/pages/PlatformLoginPage";
 import { StoreListPage } from "./platform/pages/StoreListPage";
 import { CreateStorePage } from "./platform/pages/CreateStorePage";
 import { StoreDetailPage } from "./platform/pages/StoreDetailPage";
+import { PaymentReceiptPage } from "./platform/pages/PaymentReceiptPage";
 import { BillingOverviewPage } from "./platform/pages/BillingOverviewPage";
 import { NotificationsPage } from "./platform/pages/NotificationsPage";
 import { PlatformDashboardPage } from "./platform/pages/PlatformDashboardPage";
@@ -269,6 +270,7 @@ export function App() {
                 <Route path="stores" element={<StoreListPage />} />
                 <Route path="stores/new" element={<CreateStorePage />} />
                 <Route path="stores/:id" element={<StoreDetailPage />} />
+                <Route path="stores/:id/payments/:paymentId/receipt" element={<PaymentReceiptPage />} />
                 <Route path="billing" element={<BillingOverviewPage />} />
                 <Route path="notifications" element={<NotificationsPage />} />
                 <Route path="dashboard" element={<PlatformDashboardPage />} />

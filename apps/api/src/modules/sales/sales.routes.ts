@@ -17,7 +17,7 @@ const saleInclude = {
   customer: { select: { id: true, name: true, mobile: true, email: true, address: true, creditLimit: true } },
   doctor: { select: { id: true, name: true } },
   branch: { select: { id: true, name: true, invoicePrefix: true, gstin: true, address: true, contactNumber: true } },
-  items: { include: { product: { select: { id: true, name: true, sku: true } }, batch: { select: { id: true, batchNumber: true, expiryDate: true } } } },
+  items: { include: { product: { select: { id: true, name: true, sku: true, hsnCode: true } }, batch: { select: { id: true, batchNumber: true, expiryDate: true } } } },
   payments: true,
 } as const;
 

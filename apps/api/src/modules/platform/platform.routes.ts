@@ -292,6 +292,15 @@ platformRouter.get("/stores/:tenantId/payments", async (req, res, next) => {
   }
 });
 
+platformRouter.get("/stores/:tenantId/payments/:paymentId", async (req, res, next) => {
+  try {
+    const result = await platformService.getStorePayment(req.params.tenantId, req.params.paymentId);
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 platformRouter.post("/stores/:tenantId/payments", validateBody(recordPaymentSchema), async (req, res, next) => {
   try {
     const payment = await platformService.recordStorePayment(req.params.tenantId, req.body);
