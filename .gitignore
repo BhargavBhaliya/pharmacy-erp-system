@@ -14,3 +14,6 @@ generated/
 .pgdata/
 *.log
 *.tsbuildinfo
+
+# User-uploaded files (logos, signatures) — tenant content, not source.
+apps/api/uploads/

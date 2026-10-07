@@ -4,6 +4,7 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { prisma } from "./lib/prisma";
+import { UPLOAD_ROOT } from "./lib/upload";
 import pinoHttp from "pino-http";
 import { env } from "./config/env";
 import { authRouter } from "./modules/auth/auth.routes";
@@ -44,6 +45,20 @@ app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(cookieParser());
 app.use(express.json({ limit: "2mb" }));
 app.use(pinoHttp({ level: env.NODE_ENV === "test" ? "silent" : "info" }));
+
+// Uploaded logo/signature images, served directly (no auth — filenames are random, not
+// guessable, and these are just branding assets meant to render in an <img> tag on an invoice,
+// which can't send an Authorization header anyway). Helmet's default Cross-Origin-Resource-Policy
+// would otherwise block the frontend (a different origin in dev) from loading these images, so
+// it's relaxed only for this one path, not the whole app.
+app.use(
+  "/uploads",
+  (_req, res, next) => {
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    next();
+  },
+  express.static(UPLOAD_ROOT)
+);
 
 // Baseline API-wide limiter; auth routes layer a stricter one on top (see auth.routes.ts).
 app.use("/api", rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: true, legacyHeaders: false }));

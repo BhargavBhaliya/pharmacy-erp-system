@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
+import { MulterError } from "multer";
 import crypto from "node:crypto";
 import { AppError } from "../lib/errors";
 
@@ -31,6 +32,11 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
         message: "The database is temporarily unreachable. Please try again in a moment.",
       },
     });
+  }
+
+  if (err instanceof MulterError) {
+    const message = err.code === "LIMIT_FILE_SIZE" ? "File is too large (max 2MB)" : err.message;
+    return res.status(422).json({ error: { id: errorId, code: "UPLOAD_ERROR", message } });
   }
 
   if (err instanceof ZodError) {

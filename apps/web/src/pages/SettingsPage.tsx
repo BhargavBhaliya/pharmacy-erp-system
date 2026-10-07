@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
@@ -10,6 +10,7 @@ interface BusinessProfile {
   gstin?: string | null;
   pan?: string | null;
   drugLicenseNumber?: string | null;
+  fssaiLicenseNumber?: string | null;
   address?: string | null;
   city?: string | null;
   state?: string | null;
@@ -17,6 +18,8 @@ interface BusinessProfile {
   invoiceFooter?: string | null;
   termsAndConditions?: string | null;
   financialYearStartMonth: number;
+  logoUrl?: string | null;
+  signatureUrl?: string | null;
 }
 
 export function SettingsPage() {
@@ -68,6 +71,31 @@ export function SettingsPage() {
     if (!profile) return;
     setSaved(false);
     saveMutation.mutate({ profile, expiryWarningDays });
+  }
+
+  const uploadMutation = useMutation({
+    mutationFn: async ({ field, file }: { field: "logo" | "signature"; file: File }) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await api.post<{ data: { url: string } }>(`/settings/upload-${field}`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return res.data.data.url;
+    },
+    onSuccess: (url, { field }) => {
+      setProfile((p) => (p ? { ...p, [field === "logo" ? "logoUrl" : "signatureUrl"]: url } : p));
+      queryClient.invalidateQueries({ queryKey: ["settings", "business"] });
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to upload image");
+    },
+  });
+
+  function handleFileSelect(field: "logo" | "signature", e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file name later
+    if (file) uploadMutation.mutate({ field, file });
   }
 
   async function handleExport() {
@@ -148,6 +176,45 @@ export function SettingsPage() {
           </button>
         </fieldset>
       </form>
+
+      {canEdit && (
+        <div className="card card-body mb-4">
+          <h6>Branding</h6>
+          <p className="text-muted small">Shown on printed invoices. JPEG, PNG, or WebP, up to 2MB.</p>
+          <div className="row g-3">
+            <div className="col-md-6">
+              <label className="form-label">Logo</label>
+              {profile.logoUrl && (
+                <div className="mb-2">
+                  <img src={profile.logoUrl} alt="Logo" style={{ height: 60, objectFit: "contain" }} className="border rounded p-1" />
+                </div>
+              )}
+              <input
+                type="file"
+                className="form-control form-control-sm"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={uploadMutation.isPending}
+                onChange={(e) => handleFileSelect("logo", e)}
+              />
+            </div>
+            <div className="col-md-6">
+              <label className="form-label">Signature</label>
+              {profile.signatureUrl && (
+                <div className="mb-2">
+                  <img src={profile.signatureUrl} alt="Signature" style={{ height: 60, objectFit: "contain" }} className="border rounded p-1" />
+                </div>
+              )}
+              <input
+                type="file"
+                className="form-control form-control-sm"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={uploadMutation.isPending}
+                onChange={(e) => handleFileSelect("signature", e)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {canEdit && (
         <div className="card card-body">

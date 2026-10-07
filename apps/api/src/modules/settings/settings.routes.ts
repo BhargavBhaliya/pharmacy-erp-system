@@ -3,6 +3,8 @@ import { prisma } from "../../lib/prisma";
 import { authenticate, requirePermission } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
 import { recordAudit } from "../../lib/audit";
+import { deleteUploadedFileIfOwned, imageUpload, publicUploadUrl } from "../../lib/upload";
+import { ValidationError } from "../../lib/errors";
 import { updateBusinessProfileSchema, updateSettingSchema } from "./settings.validation";
 
 export const settingsRouter = Router();
@@ -56,6 +58,35 @@ settingsRouter.put("/business", requirePermission("settings", "edit"), validateB
     next(err);
   }
 });
+
+function handleBrandingImageUpload(field: "logoUrl" | "signatureUrl", auditAction: string) {
+  return [
+    requirePermission("settings", "edit"),
+    imageUpload.single("file"),
+    async (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => {
+      try {
+        if (!req.file) throw new ValidationError("No file uploaded");
+        const tenantId = req.user!.tenantId;
+
+        const before = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+        const url = publicUploadUrl(tenantId, req.file.filename);
+        const tenant = await prisma.tenant.update({ where: { id: tenantId }, data: { [field]: url } });
+
+        // Best-effort: remove the old file now that it's no longer referenced. Never blocks
+        // the response on this — an orphaned file on disk is a non-issue, a failed response isn't.
+        deleteUploadedFileIfOwned(tenantId, before[field]);
+
+        recordAudit({ req, module: "settings", action: auditAction, entityType: "Tenant", entityId: tenantId });
+        res.status(201).json({ data: { url } });
+      } catch (err) {
+        next(err);
+      }
+    },
+  ] as const;
+}
+
+settingsRouter.post("/upload-logo", ...handleBrandingImageUpload("logoUrl", "upload_logo"));
+settingsRouter.post("/upload-signature", ...handleBrandingImageUpload("signatureUrl", "upload_signature"));
 
 // Generic tenant/branch-scoped key-value settings (e.g. "expiryWarningDays"), backing the
 // Setting model from Phase 1. branchId in the body scopes it to one branch; omit for tenant-wide.
