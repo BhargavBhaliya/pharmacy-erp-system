@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
+import { prisma } from "./lib/prisma";
 import pinoHttp from "pino-http";
 import { env } from "./config/env";
 import { authRouter } from "./modules/auth/auth.routes";
@@ -47,7 +48,17 @@ app.use(pinoHttp({ level: env.NODE_ENV === "test" ? "silent" : "info" }));
 // Baseline API-wide limiter; auth routes layer a stricter one on top (see auth.routes.ts).
 app.use("/api", rateLimit({ windowMs: 60 * 1000, limit: 300, standardHeaders: true, legacyHeaders: false }));
 
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
+// Actually pings the database rather than just confirming the process is alive — a load
+// balancer or uptime monitor watching this can tell "API is up but DB is unreachable" apart
+// from a real outage, instead of reporting healthy while every real request 503s.
+app.get("/health", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: "ok", database: "up" });
+  } catch {
+    res.status(503).json({ status: "degraded", database: "down" });
+  }
+});
 
 app.use("/api/auth", authRouter);
 app.use("/api/auth", platformExchangeRouter);

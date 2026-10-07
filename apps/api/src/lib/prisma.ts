@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 // Reused across hot-reloads in dev so we don't exhaust DB connections.
 declare global {
@@ -6,7 +6,7 @@ declare global {
   var __prisma: PrismaClient | undefined;
 }
 
-export const prisma =
+const basePrisma =
   global.__prisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
@@ -19,5 +19,42 @@ export const prisma =
   });
 
 if (process.env.NODE_ENV !== "production") {
-  global.__prisma = prisma;
+  global.__prisma = basePrisma;
 }
+
+const RETRYABLE_CODES = new Set(["P1001", "P1002", "P1008", "P1017"]);
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 500;
+
+function isRetryableConnectionError(err: unknown): boolean {
+  if (err instanceof Prisma.PrismaClientInitializationError) return true;
+  if (err instanceof Prisma.PrismaClientKnownRequestError && RETRYABLE_CODES.has(err.code)) return true;
+  return false;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// A connection-establishment failure (host unreachable, server closed the connection, pool
+// couldn't get a client in time) means the query never reached the database — it's always safe
+// to retry, unlike a failure mid-execution where a write might have already landed. A remote,
+// shared-hosting database (Hostinger, in production) can have brief network blips that a local
+// Postgres instance never exposed; without this, every such blip surfaced as a raw 500 to
+// whoever happened to be mid-request at that moment instead of quietly recovering.
+export const prisma = basePrisma.$extends({
+  query: {
+    $allOperations: async ({ query, args }) => {
+      let attempt = 0;
+      for (;;) {
+        try {
+          return await query(args);
+        } catch (err) {
+          attempt += 1;
+          if (attempt > MAX_RETRIES || !isRetryableConnectionError(err)) throw err;
+          await sleep(RETRY_DELAY_MS * attempt);
+        }
+      }
+    },
+  },
+}) as unknown as PrismaClient;
