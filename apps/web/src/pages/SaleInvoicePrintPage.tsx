@@ -145,46 +145,48 @@ export function SaleInvoicePrintPage() {
           </div>
         </div>
 
-        <table className="table table-sm table-bordered">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Item</th>
-              <th>HSN</th>
-              <th>Batch</th>
-              <th>Expiry</th>
-              <th className="text-end">Qty</th>
-              <th className="text-end">Rate</th>
-              <th className="text-end">Disc%</th>
-              <th className="text-end">CGST%</th>
-              <th className="text-end">SGST%</th>
-              <th className="text-end">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sale.items.map((item, idx) => {
-              const halfRate = Number(item.gstRatePercent) / 2;
-              return (
-                <tr key={item.id}>
-                  <td>{idx + 1}</td>
-                  <td>
-                    {item.product.name}
-                    <div className="text-muted small">{item.product.sku}</div>
-                  </td>
-                  <td>{item.product.hsnCode ?? "—"}</td>
-                  <td>{item.batch.batchNumber}</td>
-                  <td>{new Date(item.batch.expiryDate).toLocaleDateString()}</td>
-                  <td className="text-end">{item.quantity}</td>
-                  <td className="text-end">₹{item.sellingPrice}</td>
-                  <td className="text-end">{item.discountPercent}</td>
-                  <td className="text-end">{halfRate}%</td>
-                  <td className="text-end">{halfRate}%</td>
-                  <td className="text-end">₹{item.lineTotal}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div style={{ overflowX: "auto" }}>
+          <table className="table table-sm table-bordered mb-0" style={{ fontSize: "0.85rem", minWidth: 720 }}>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Item</th>
+                <th>HSN</th>
+                <th>Batch</th>
+                <th>Expiry</th>
+                <th className="text-end">Qty</th>
+                <th className="text-end">Rate</th>
+                <th className="text-end">Disc%</th>
+                <th className="text-end">CGST%</th>
+                <th className="text-end">SGST%</th>
+                <th className="text-end">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sale.items.map((item, idx) => {
+                const halfRate = Number(item.gstRatePercent) / 2;
+                return (
+                  <tr key={item.id}>
+                    <td>{idx + 1}</td>
+                    <td>
+                      {item.product.name}
+                      <div className="text-muted small">{item.product.sku}</div>
+                    </td>
+                    <td>{item.product.hsnCode ?? "—"}</td>
+                    <td>{item.batch.batchNumber}</td>
+                    <td>{new Date(item.batch.expiryDate).toLocaleDateString()}</td>
+                    <td className="text-end">{item.quantity}</td>
+                    <td className="text-end">₹{item.sellingPrice}</td>
+                    <td className="text-end">{item.discountPercent}</td>
+                    <td className="text-end">{halfRate}%</td>
+                    <td className="text-end">{halfRate}%</td>
+                    <td className="text-end">₹{item.lineTotal}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
         <div className="d-flex justify-content-between align-items-start flex-wrap gap-3">
           <div style={{ maxWidth: 420 }}>

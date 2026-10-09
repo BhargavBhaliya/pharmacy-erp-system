@@ -243,16 +243,19 @@ export function App() {
                   </RequirePermission>
                 }
               />
-              <Route
-                path="/sales/:id/print"
-                element={
-                  <RequirePermission module="sales" action="print">
-                    <SaleInvoicePrintPage />
-                  </RequirePermission>
-                }
-              />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
+
+            {/* Outside AppLayout deliberately — a print/invoice view should get the full
+                browser width on screen too, not just have the sidebar hidden at print time. */}
+            <Route
+              path="/sales/:id/print"
+              element={
+                <RequirePermission module="sales" action="print">
+                  <SaleInvoicePrintPage />
+                </RequirePermission>
+              }
+            />
           </Route>
 
           <Route
@@ -270,12 +273,14 @@ export function App() {
                 <Route path="stores" element={<StoreListPage />} />
                 <Route path="stores/new" element={<CreateStorePage />} />
                 <Route path="stores/:id" element={<StoreDetailPage />} />
-                <Route path="stores/:id/payments/:paymentId/receipt" element={<PaymentReceiptPage />} />
                 <Route path="billing" element={<BillingOverviewPage />} />
                 <Route path="notifications" element={<NotificationsPage />} />
                 <Route path="dashboard" element={<PlatformDashboardPage />} />
                 <Route path="settings" element={<PlatformSettingsPage />} />
               </Route>
+              {/* Outside PlatformLayout deliberately — a print/receipt view should get the
+                  full browser width on screen too, not just have the sidebar hidden at print time. */}
+              <Route path="stores/:id/payments/:paymentId/receipt" element={<PaymentReceiptPage />} />
             </Route>
           </Route>
         </Routes>
