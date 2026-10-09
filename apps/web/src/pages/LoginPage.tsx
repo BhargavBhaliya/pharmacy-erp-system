@@ -1,10 +1,17 @@
-import { useState, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { usePlatformAuth } from "../platform/auth/PlatformAuthContext";
 import { isAxiosError } from "axios";
 
+// One login form for both account types: a Platform Admin and a store user are entirely
+// separate systems under the hood (separate tables, separate JWT secrets — see
+// PlatformAuthContext's own comment), but there is no reason to make a person pick the right
+// *page* first. Try the store login; if that's not who this is, try Platform Admin; whichever
+// one actually matches these credentials decides where to land.
 export function LoginPage() {
-  const { login, user, loading } = useAuth();
+  const { login, user, loading: authLoading } = useAuth();
+  const { login: platformLogin, admin, loading: platformLoading } = usePlatformAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -12,7 +19,9 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const loading = authLoading || platformLoading;
   if (!loading && user) return <Navigate to="/" replace />;
+  if (!loading && admin) return <Navigate to="/platform/dashboard" replace />;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -21,12 +30,23 @@ export function LoginPage() {
     try {
       await login(email, password);
       navigate("/", { replace: true });
+      return;
+    } catch {
+      // Not a store login — fall through and see if it's the Platform Admin instead.
+    }
+    try {
+      await platformLogin(email, password);
+      navigate("/platform/dashboard", { replace: true });
     } catch (err) {
       const message = isAxiosError(err) ? err.response?.data?.error?.message : undefined;
-      setError(message ?? "Login failed. Please check your credentials.");
+      setError(message ?? "Invalid email or password");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handlePasswordChange(e: ChangeEvent<HTMLInputElement>) {
+    setPassword(e.target.value);
   }
 
   return (
@@ -48,7 +68,7 @@ export function LoginPage() {
                   type={showPassword ? "text" : "password"}
                   className="form-control"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={handlePasswordChange}
                   required
                   autoComplete="current-password"
                 />

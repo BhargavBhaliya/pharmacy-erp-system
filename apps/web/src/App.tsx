@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { RequireAuth, RequirePermission } from "./auth/RequireAuth";
 import { AppLayout } from "./layout/AppLayout";
@@ -35,7 +35,6 @@ import { ImpersonationLandingPage } from "./pages/ImpersonationLandingPage";
 import { PlatformAuthProvider } from "./platform/auth/PlatformAuthContext";
 import { RequirePlatformAuth } from "./platform/auth/RequirePlatformAuth";
 import { PlatformLayout } from "./platform/layout/PlatformLayout";
-import { PlatformLoginPage } from "./platform/pages/PlatformLoginPage";
 import { StoreListPage } from "./platform/pages/StoreListPage";
 import { CreateStorePage } from "./platform/pages/CreateStorePage";
 import { StoreDetailPage } from "./platform/pages/StoreDetailPage";
@@ -49,225 +48,220 @@ export function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterBusinessPage />} />
-          <Route path="/impersonate-landing" element={<ImpersonationLandingPage />} />
+        <PlatformAuthProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            {/* A single login page now handles both account types — this just sends anyone
+                who still has the old platform link bookmarked to the same place. */}
+            <Route path="/platform/login" element={<Navigate to="/login" replace />} />
+            <Route path="/register" element={<RegisterBusinessPage />} />
+            <Route path="/impersonate-landing" element={<ImpersonationLandingPage />} />
 
-          <Route element={<RequireAuth />}>
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<DashboardPage />} />
+            <Route element={<RequireAuth />}>
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<DashboardPage />} />
+                <Route
+                  path="/branches"
+                  element={
+                    <RequirePermission module="branches" action="view">
+                      <BranchesPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/products"
+                  element={
+                    <RequirePermission module="products" action="view">
+                      <ProductsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/catalog"
+                  element={
+                    <RequirePermission module="products" action="view">
+                      <CatalogPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/suppliers"
+                  element={
+                    <RequirePermission module="suppliers" action="view">
+                      <SuppliersPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/inventory"
+                  element={
+                    <RequirePermission module="inventory" action="view">
+                      <InventoryPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/expiry"
+                  element={
+                    <RequirePermission module="expiry" action="view">
+                      <ExpiryPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/purchases"
+                  element={
+                    <RequirePermission module="purchase" action="view">
+                      <PurchasesPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/purchase-returns"
+                  element={
+                    <RequirePermission module="purchase_return" action="view">
+                      <PurchaseReturnsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/pos"
+                  element={
+                    <RequirePermission module="pos" action="add">
+                      <POSPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/sales"
+                  element={
+                    <RequirePermission module="sales" action="view">
+                      <SalesPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/sales-returns"
+                  element={
+                    <RequirePermission module="sales_return" action="view">
+                      <SalesReturnsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/customers"
+                  element={
+                    <RequirePermission module="customers" action="view">
+                      <CustomersPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/expenses"
+                  element={
+                    <RequirePermission module="expenses" action="view">
+                      <ExpensesPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route path="/payments" element={<PaymentsPage />} />
+                <Route path="/cash-sessions" element={<CashSessionsPage />} />
+                <Route
+                  path="/reports"
+                  element={
+                    <RequirePermission module="reports" action="view">
+                      <ReportsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <RequirePermission module="settings" action="view">
+                      <SettingsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/users"
+                  element={
+                    <RequirePermission module="users" action="view">
+                      <UsersPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/roles"
+                  element={
+                    <RequirePermission module="roles" action="view">
+                      <RolesPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/doctors"
+                  element={
+                    <RequirePermission module="doctors" action="view">
+                      <DoctorsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/prescriptions"
+                  element={
+                    <RequirePermission module="prescriptions" action="view">
+                      <PrescriptionsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/purchase-orders"
+                  element={
+                    <RequirePermission module="purchase" action="view">
+                      <PurchaseOrdersPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/stock-transfers"
+                  element={
+                    <RequirePermission module="stock_transfer" action="view">
+                      <StockTransfersPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/audit-logs"
+                  element={
+                    <RequirePermission module="audit_logs" action="view">
+                      <AuditLogsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/barcode-labels"
+                  element={
+                    <RequirePermission module="products" action="view">
+                      <BarcodeLabelsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
+
+              {/* Outside AppLayout deliberately — a print/invoice view should get the full
+                  browser width on screen too, not just have the sidebar hidden at print time. */}
               <Route
-                path="/branches"
+                path="/sales/:id/print"
                 element={
-                  <RequirePermission module="branches" action="view">
-                    <BranchesPage />
+                  <RequirePermission module="sales" action="print">
+                    <SaleInvoicePrintPage />
                   </RequirePermission>
                 }
               />
-              <Route
-                path="/products"
-                element={
-                  <RequirePermission module="products" action="view">
-                    <ProductsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/catalog"
-                element={
-                  <RequirePermission module="products" action="view">
-                    <CatalogPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/suppliers"
-                element={
-                  <RequirePermission module="suppliers" action="view">
-                    <SuppliersPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/inventory"
-                element={
-                  <RequirePermission module="inventory" action="view">
-                    <InventoryPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/expiry"
-                element={
-                  <RequirePermission module="expiry" action="view">
-                    <ExpiryPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/purchases"
-                element={
-                  <RequirePermission module="purchase" action="view">
-                    <PurchasesPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/purchase-returns"
-                element={
-                  <RequirePermission module="purchase_return" action="view">
-                    <PurchaseReturnsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/pos"
-                element={
-                  <RequirePermission module="pos" action="add">
-                    <POSPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/sales"
-                element={
-                  <RequirePermission module="sales" action="view">
-                    <SalesPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/sales-returns"
-                element={
-                  <RequirePermission module="sales_return" action="view">
-                    <SalesReturnsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/customers"
-                element={
-                  <RequirePermission module="customers" action="view">
-                    <CustomersPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/expenses"
-                element={
-                  <RequirePermission module="expenses" action="view">
-                    <ExpensesPage />
-                  </RequirePermission>
-                }
-              />
-              <Route path="/payments" element={<PaymentsPage />} />
-              <Route path="/cash-sessions" element={<CashSessionsPage />} />
-              <Route
-                path="/reports"
-                element={
-                  <RequirePermission module="reports" action="view">
-                    <ReportsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/settings"
-                element={
-                  <RequirePermission module="settings" action="view">
-                    <SettingsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/users"
-                element={
-                  <RequirePermission module="users" action="view">
-                    <UsersPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/roles"
-                element={
-                  <RequirePermission module="roles" action="view">
-                    <RolesPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/doctors"
-                element={
-                  <RequirePermission module="doctors" action="view">
-                    <DoctorsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/prescriptions"
-                element={
-                  <RequirePermission module="prescriptions" action="view">
-                    <PrescriptionsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/purchase-orders"
-                element={
-                  <RequirePermission module="purchase" action="view">
-                    <PurchaseOrdersPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/stock-transfers"
-                element={
-                  <RequirePermission module="stock_transfer" action="view">
-                    <StockTransfersPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/audit-logs"
-                element={
-                  <RequirePermission module="audit_logs" action="view">
-                    <AuditLogsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/barcode-labels"
-                element={
-                  <RequirePermission module="products" action="view">
-                    <BarcodeLabelsPage />
-                  </RequirePermission>
-                }
-              />
-              <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
 
-            {/* Outside AppLayout deliberately — a print/invoice view should get the full
-                browser width on screen too, not just have the sidebar hidden at print time. */}
-            <Route
-              path="/sales/:id/print"
-              element={
-                <RequirePermission module="sales" action="print">
-                  <SaleInvoicePrintPage />
-                </RequirePermission>
-              }
-            />
-          </Route>
-
-          <Route
-            path="/platform/*"
-            element={
-              <PlatformAuthProvider>
-                <Outlet />
-              </PlatformAuthProvider>
-            }
-          >
-            <Route path="login" element={<PlatformLoginPage />} />
-            <Route element={<RequirePlatformAuth />}>
+            <Route path="/platform" element={<RequirePlatformAuth />}>
               <Route element={<PlatformLayout />}>
                 <Route index element={<Navigate to="/platform/dashboard" replace />} />
                 <Route path="stores" element={<StoreListPage />} />
@@ -282,8 +276,8 @@ export function App() {
                   full browser width on screen too, not just have the sidebar hidden at print time. */}
               <Route path="stores/:id/payments/:paymentId/receipt" element={<PaymentReceiptPage />} />
             </Route>
-          </Route>
-        </Routes>
+          </Routes>
+        </PlatformAuthProvider>
       </AuthProvider>
     </BrowserRouter>
   );

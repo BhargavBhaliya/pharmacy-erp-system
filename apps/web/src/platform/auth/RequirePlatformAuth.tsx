@@ -12,6 +12,6 @@ export function RequirePlatformAuth() {
     );
   }
 
-  if (!admin) return <Navigate to="/platform/login" replace />;
+  if (!admin) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
