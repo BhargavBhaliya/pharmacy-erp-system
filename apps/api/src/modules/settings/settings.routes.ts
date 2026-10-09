@@ -3,7 +3,8 @@ import { prisma } from "../../lib/prisma";
 import { authenticate, requirePermission } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
 import { recordAudit } from "../../lib/audit";
-import { deleteUploadedFileIfOwned, imageUpload, publicUploadUrl } from "../../lib/upload";
+import fs from "node:fs";
+import { deleteUploadedFileIfOwned, imageUpload, publicUploadUrl, verifyImageMagicBytes } from "../../lib/upload";
 import { ValidationError } from "../../lib/errors";
 import { updateBusinessProfileSchema, updateSettingSchema } from "./settings.validation";
 
@@ -67,6 +68,11 @@ function handleBrandingImageUpload(field: "logoUrl" | "signatureUrl", auditActio
       try {
         if (!req.file) throw new ValidationError("No file uploaded");
         const tenantId = req.user!.tenantId;
+
+        if (!verifyImageMagicBytes(req.file.path, req.file.mimetype)) {
+          fs.unlink(req.file.path, () => undefined);
+          throw new ValidationError("File content doesn't match a valid JPEG, PNG, or WebP image");
+        }
 
         const before = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
         const url = publicUploadUrl(tenantId, req.file.filename);

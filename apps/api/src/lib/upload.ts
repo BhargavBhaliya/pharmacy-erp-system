@@ -40,6 +40,36 @@ export const imageUpload = multer({
   },
 });
 
+// multer's fileFilter only sees the client-supplied Content-Type for the form part — trivially
+// spoofable (an attacker can label any file "image/png"). Helmet's nosniff header already stops
+// a browser from executing a mislabeled file loaded via <img>, but that's one mitigation, not a
+// guarantee for every consumer of this URL — check the file's actual magic bytes once it's on
+// disk, as the real server-side control. Deletes and rejects on a mismatch.
+const MAGIC_BYTES: Record<string, (buf: Buffer) => boolean> = {
+  "image/jpeg": (buf) => buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff,
+  "image/png": (buf) =>
+    buf.length >= 8 &&
+    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+    buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a,
+  "image/webp": (buf) =>
+    buf.length >= 12 &&
+    buf.subarray(0, 4).toString("ascii") === "RIFF" &&
+    buf.subarray(8, 12).toString("ascii") === "WEBP",
+};
+
+export function verifyImageMagicBytes(filePath: string, declaredMimetype: string): boolean {
+  const check = MAGIC_BYTES[declaredMimetype];
+  if (!check) return false;
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const buf = Buffer.alloc(12);
+    const bytesRead = fs.readSync(fd, buf, 0, 12, 0);
+    return check(buf.subarray(0, bytesRead));
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 // Deletes a previously-uploaded file given its public URL, but only if it's actually one of
 // ours under this tenant's own folder — never touches an external URL (a tenant may still have
 // one from before this feature existed) or another tenant's folder.
