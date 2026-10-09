@@ -55,7 +55,7 @@ export const MODULE_ACTIONS: Record<PermissionModule, PermissionAction[]> = {
   pos: ["view", "add", "discount"],
   sales: ["view", "add", "edit", "cancel", "export", "print", "discount"],
   sales_return: ["view", "add", "approve", "refund"],
-  purchase: ["view", "add", "edit", "delete", "approve", "export", "print"],
+  purchase: ["view", "add", "edit", "delete", "approve", "cancel", "export", "print"],
   purchase_return: ["view", "add", "approve"],
   products: ["view", "add", "edit", "delete", "export"],
   batches: ["view", "add", "edit"],

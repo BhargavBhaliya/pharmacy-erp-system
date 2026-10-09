@@ -53,6 +53,27 @@ describe("purchase workflow", () => {
     expect(res.body.data.status).toBe("SENT");
   });
 
+  // Regression test: "purchase.cancel" was missing from the purchase module's action catalog,
+  // so this permission could never actually be granted to any role — not even Super Admin's
+  // "*.*" wildcard — making the cancel-PO route unreachable for everyone, in every tenant.
+  it("a Super Admin can cancel a purchase order", async () => {
+    const t = await setupTenant("Purchase Pharmacy 6");
+    const product = await createProduct(t.token);
+    const supplier = await createSupplier(t.token);
+
+    const create = await request(app)
+      .post("/api/purchase-orders")
+      .set("Authorization", `Bearer ${t.token}`)
+      .send({ branchId: t.branchId, supplierId: supplier.id, items: [{ productId: product.id, quantity: 10, rate: 30 }] });
+    expect(create.status).toBe(201);
+
+    const cancel = await request(app)
+      .put(`/api/purchase-orders/${create.body.data.id}/cancel`)
+      .set("Authorization", `Bearer ${t.token}`);
+    expect(cancel.status).toBe(200);
+    expect(cancel.body.data.status).toBe("CANCELLED");
+  });
+
   it("recording a purchase creates/updates batches, increases stock, and computes GST totals correctly", async () => {
     const t = await setupTenant("Purchase Pharmacy 2");
     const product = await createProduct(t.token);
