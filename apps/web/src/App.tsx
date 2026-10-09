@@ -11,6 +11,7 @@ import { CatalogPage } from "./pages/CatalogPage";
 import { SuppliersPage } from "./pages/SuppliersPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { ExpiryPage } from "./pages/ExpiryPage";
+import { ReorderSuggestionsPage } from "./pages/ReorderSuggestionsPage";
 import { PurchasesPage } from "./pages/PurchasesPage";
 import { PurchaseReturnsPage } from "./pages/PurchaseReturnsPage";
 import { CustomersPage } from "./pages/CustomersPage";
@@ -105,6 +106,14 @@ export function App() {
                   element={
                     <RequirePermission module="expiry" action="view">
                       <ExpiryPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/reorder-suggestions"
+                  element={
+                    <RequirePermission module="inventory" action="view">
+                      <ReorderSuggestionsPage />
                     </RequirePermission>
                   }
                 />

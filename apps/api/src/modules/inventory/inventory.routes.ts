@@ -93,6 +93,78 @@ inventoryRouter.get("/low-stock", requirePermission("inventory", "view"), async 
   }
 });
 
+// Low-stock, plus a suggested reorder quantity and the supplier/rate from this product's most
+// recent purchase (so "create a PO from this" needs the least possible re-typing). Purely
+// advisory — doesn't create anything itself.
+inventoryRouter.get("/reorder-suggestions", requirePermission("inventory", "view"), async (req, res, next) => {
+  try {
+    const q = stockQuerySchema.parse(req.query);
+    const tenantId = req.user!.tenantId;
+    const rows = (await aggregateStock(tenantId, branchScope(req, q.branchId), q.productId)).filter(
+      (r) => r.isLowStock
+    );
+    if (rows.length === 0) return res.json({ data: [] });
+
+    const productIds = Array.from(new Set(rows.map((r) => r.productId)));
+    const [products, recentPurchaseItems] = await Promise.all([
+      prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, isActive: true, maxStockLevel: true },
+      }),
+      // Ordered newest-first so the first item seen per productId below is its most recent
+      // purchase — this is how we infer "the supplier/rate we'd reorder this from."
+      prisma.purchaseItem.findMany({
+        where: { productId: { in: productIds }, purchase: { tenantId, status: { not: "CANCELLED" } } },
+        select: {
+          productId: true,
+          purchaseRate: true,
+          purchase: { select: { purchaseDate: true, supplier: { select: { id: true, name: true } } } },
+        },
+        orderBy: { purchase: { purchaseDate: "desc" } },
+      }),
+    ]);
+    const productById = new Map(products.map((p) => [p.id, p]));
+
+    const lastPurchaseByProduct = new Map<
+      string,
+      { supplierId: string; supplierName: string; rate: string }
+    >();
+    for (const item of recentPurchaseItems) {
+      if (lastPurchaseByProduct.has(item.productId)) continue;
+      lastPurchaseByProduct.set(item.productId, {
+        supplierId: item.purchase.supplier.id,
+        supplierName: item.purchase.supplier.name,
+        rate: item.purchaseRate.toString(),
+      });
+    }
+
+    const data = rows
+      .filter((r) => productById.get(r.productId)?.isActive !== false)
+      .map((r) => {
+        const maxStockLevel = productById.get(r.productId)?.maxStockLevel ?? null;
+        const target = maxStockLevel ?? r.reorderLevel * 2;
+        const suggestedQuantity = Math.max(target - r.availableQuantity, 1);
+        const lastPurchase = lastPurchaseByProduct.get(r.productId) ?? null;
+        return {
+          productId: r.productId,
+          productName: r.productName,
+          sku: r.sku,
+          branchId: r.branchId,
+          currentStock: r.availableQuantity,
+          reorderLevel: r.reorderLevel,
+          suggestedQuantity,
+          supplierId: lastPurchase?.supplierId ?? null,
+          supplierName: lastPurchase?.supplierName ?? null,
+          lastPurchaseRate: lastPurchase?.rate ?? null,
+        };
+      });
+
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
 inventoryRouter.get("/expiry", requirePermission("expiry", "view"), async (req, res, next) => {
   try {
     const q = expiryQuerySchema.parse(req.query);
