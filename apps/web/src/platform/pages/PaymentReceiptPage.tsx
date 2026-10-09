@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { platformApi } from "../api/platformClient";
 import { amountInWords } from "../../lib/numberToWords";
@@ -40,7 +40,10 @@ export function PaymentReceiptPage() {
         }
       `}</style>
 
-      <div className="d-flex justify-content-end mb-3 no-print">
+      <div className="d-flex justify-content-between mb-3 no-print">
+        <Link to={`/platform/stores/${id}`} className="btn btn-outline-secondary">
+          ← Back to store
+        </Link>
         <button className="btn btn-primary" onClick={() => window.print()}>
           Print
         </button>

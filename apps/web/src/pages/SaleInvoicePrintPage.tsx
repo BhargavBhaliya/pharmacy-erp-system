@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { amountInWords } from "../lib/numberToWords";
 
@@ -76,7 +76,10 @@ export function SaleInvoicePrintPage() {
         }
       `}</style>
 
-      <div className="d-flex justify-content-end mb-3 no-print">
+      <div className="d-flex justify-content-between mb-3 no-print">
+        <Link to="/sales" className="btn btn-outline-secondary">
+          ← Back to Sales
+        </Link>
         <button className="btn btn-primary" onClick={() => window.print()}>
           Print
         </button>
