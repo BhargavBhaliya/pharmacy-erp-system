@@ -16,6 +16,10 @@ interface Doctor {
   id: string;
   name: string;
 }
+interface ProductOption {
+  id: string;
+  name: string;
+}
 interface Prescription {
   id: string;
   branchId: string;
@@ -49,6 +53,11 @@ export function PrescriptionsPage() {
   const { data: doctors = [] } = useQuery({
     queryKey: ["doctors"],
     queryFn: async () => (await api.get<{ data: Doctor[] }>("/doctors")).data.data,
+  });
+
+  const { data: products = [] } = useQuery({
+    queryKey: ["products", { pageSize: 200 }],
+    queryFn: async () => (await api.get<{ data: ProductOption[] }>("/products", { params: { pageSize: 200 } })).data.data,
   });
 
   const { data: prescriptions = [], isLoading } = useQuery({
@@ -158,7 +167,18 @@ export function PrescriptionsPage() {
             </div>
             <div className="col-md-2">
               <label className="form-label">Medicine</label>
-              <input className="form-control" value={form.medicineName} onChange={(e) => setForm({ ...form, medicineName: e.target.value })} />
+              <input
+                className="form-control"
+                list="medicine-options"
+                placeholder="Select or type..."
+                value={form.medicineName}
+                onChange={(e) => setForm({ ...form, medicineName: e.target.value })}
+              />
+              <datalist id="medicine-options">
+                {products.map((p) => (
+                  <option key={p.id} value={p.name} />
+                ))}
+              </datalist>
             </div>
             <div className="col-md-1">
               <label className="form-label">Dose</label>
