@@ -5,6 +5,10 @@ export function uniqueEmail(prefix: string): string {
   return `${prefix}.${crypto.randomBytes(6).toString("hex")}@test.local`;
 }
 
+export function uniqueUsername(prefix: string): string {
+  return `${prefix}${crypto.randomBytes(4).toString("hex")}`;
+}
+
 export async function deleteTenant(tenantId: string): Promise<void> {
   // MySQL (unlike Postgres) doesn't reliably order multi-path cascades: when Tenant cascades
   // down two independent paths that reconverge on the same table via a required, non-cascade

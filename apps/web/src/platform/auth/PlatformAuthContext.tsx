@@ -5,6 +5,7 @@ interface PlatformAdmin {
   id: string;
   name: string;
   email: string;
+  username: string;
 }
 
 interface PlatformAuthContextValue {

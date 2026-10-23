@@ -3,7 +3,7 @@ import request from "supertest";
 import { app } from "../src/app";
 import { prisma } from "../src/lib/prisma";
 import { hashPassword } from "../src/lib/password";
-import { uniqueEmail, deleteTenant } from "./helpers";
+import { uniqueEmail, uniqueUsername, deleteTenant } from "./helpers";
 
 const createdTenantIds: string[] = [];
 let platformAdminId: string;
@@ -13,7 +13,7 @@ const PLATFORM_ADMIN_PASSWORD = "PlatformPass123!";
 beforeAll(async () => {
   const passwordHash = await hashPassword(PLATFORM_ADMIN_PASSWORD);
   const admin = await prisma.platformAdmin.create({
-    data: { name: "Test Platform Admin", email: PLATFORM_ADMIN_EMAIL, passwordHash },
+    data: { name: "Test Platform Admin", email: PLATFORM_ADMIN_EMAIL, username: uniqueUsername("platformadmin"), passwordHash },
   });
   platformAdminId = admin.id;
 });

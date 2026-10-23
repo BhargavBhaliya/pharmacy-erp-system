@@ -1,7 +1,9 @@
 import { z } from "zod";
 
+// Field is still called "email" for API-compatibility, but it now accepts a username too —
+// same approach as the tenant login (see auth.validation.ts).
 export const platformLoginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1),
   password: z.string().min(1),
 });
 export type PlatformLoginInput = z.infer<typeof platformLoginSchema>;
@@ -9,6 +11,12 @@ export type PlatformLoginInput = z.infer<typeof platformLoginSchema>;
 export const updatePlatformAdminSchema = z.object({
   name: z.string().min(2).max(200).optional(),
   email: z.string().email().optional(),
+  username: z
+    .string()
+    .min(3)
+    .max(30)
+    .regex(/^[a-z0-9_]+$/, "Username can only contain lowercase letters, numbers, and underscores")
+    .optional(),
 });
 export type UpdatePlatformAdminInput = z.infer<typeof updatePlatformAdminSchema>;
 

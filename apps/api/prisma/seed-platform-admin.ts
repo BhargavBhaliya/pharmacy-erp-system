@@ -3,6 +3,7 @@
 // is the only way one gets created. Run from apps/api: npx tsx prisma/seed-platform-admin.ts
 import { prisma } from "../src/lib/prisma";
 import { hashPassword } from "../src/lib/password";
+import { generateUniqueUsername } from "../src/lib/username";
 
 async function main() {
   const existingCount = await prisma.platformAdmin.count();
@@ -29,8 +30,9 @@ async function main() {
   }
 
   const passwordHash = await hashPassword(password);
-  const admin = await prisma.platformAdmin.create({ data: { name, email, passwordHash } });
-  console.log(`Platform admin created: ${admin.email} (id: ${admin.id})`);
+  const username = process.env.PLATFORM_ADMIN_USERNAME || (await generateUniqueUsername(prisma, name, "platformAdmin"));
+  const admin = await prisma.platformAdmin.create({ data: { name, email, username, passwordHash } });
+  console.log(`Platform admin created: ${admin.email} / username "${admin.username}" (id: ${admin.id})`);
 }
 
 main()

@@ -6,7 +6,7 @@ import { usePlatformAuth } from "../auth/PlatformAuthContext";
 
 export function PlatformSettingsPage() {
   const { admin, refreshProfile } = usePlatformAuth();
-  const [profileForm, setProfileForm] = useState({ name: admin?.name ?? "", email: admin?.email ?? "" });
+  const [profileForm, setProfileForm] = useState({ name: admin?.name ?? "", email: admin?.email ?? "", username: admin?.username ?? "" });
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
 
@@ -83,6 +83,16 @@ export function PlatformSettingsPage() {
               required
               value={profileForm.email}
               onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+            />
+
+            <label className="form-label">Username (also a login id)</label>
+            <input
+              className="form-control mb-3"
+              required
+              pattern="[a-z0-9_]+"
+              title="Lowercase letters, numbers, and underscores only"
+              value={profileForm.username}
+              onChange={(e) => setProfileForm({ ...profileForm, username: e.target.value })}
             />
 
             <button type="submit" className="btn btn-dark" disabled={saveProfileMutation.isPending} style={{ width: 140 }}>

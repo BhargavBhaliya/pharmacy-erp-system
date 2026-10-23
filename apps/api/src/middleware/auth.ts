@@ -47,6 +47,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       tenantId: user.tenantId,
       roleId: user.roleId,
       email: user.email,
+      username: user.username,
       name: user.name,
       branchIds,
       permissionCodes,

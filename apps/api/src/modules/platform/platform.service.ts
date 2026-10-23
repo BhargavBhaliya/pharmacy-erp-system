@@ -5,6 +5,7 @@ import { prisma } from "../../lib/prisma";
 import { hashPassword } from "../../lib/password";
 import { seedDefaultRolesForTenant } from "../../lib/tenantSetup";
 import { nextStoreCode } from "../../lib/storeCode";
+import { withUniqueUsername } from "../../lib/username";
 import { generateRefreshToken, hashRefreshToken, refreshTokenExpiryDate, signAccessToken } from "../../lib/jwt";
 import { ConflictError, NotFoundError, ValidationError } from "../../lib/errors";
 import { recordPlatformAudit } from "./platform-audit";
@@ -29,32 +30,37 @@ export async function createStore(input: CreateStoreInput) {
 
   const passwordHash = await hashPassword(input.password);
 
-  return prisma.$transaction(async (tx) => {
-    const storeCode = await nextStoreCode(tx);
-    const tenant = await tx.tenant.create({
-      data: { businessName: input.businessName, ownerName: input.ownerName, email: input.email, phone: input.phone, storeCode },
-    });
+  // Retries the WHOLE transaction (not a query inside it) on a username collision — see
+  // withUniqueUsername's own comment for why that's necessary over retrying in place.
+  return withUniqueUsername(prisma, input.ownerName, "user", (username) =>
+    prisma.$transaction(async (tx) => {
+      const storeCode = await nextStoreCode(tx);
+      const tenant = await tx.tenant.create({
+        data: { businessName: input.businessName, ownerName: input.ownerName, email: input.email, phone: input.phone, storeCode },
+      });
 
-    const branch = await tx.branch.create({
-      data: { tenantId: tenant.id, name: "Main Branch", invoicePrefix: "INV" },
-    });
-    await tx.warehouse.create({ data: { tenantId: tenant.id, branchId: branch.id, name: "Main Warehouse" } });
-    await tx.counter.create({ data: { tenantId: tenant.id, branchId: branch.id, name: "Counter 1" } });
+      const branch = await tx.branch.create({
+        data: { tenantId: tenant.id, name: "Main Branch", invoicePrefix: "INV" },
+      });
+      await tx.warehouse.create({ data: { tenantId: tenant.id, branchId: branch.id, name: "Main Warehouse" } });
+      await tx.counter.create({ data: { tenantId: tenant.id, branchId: branch.id, name: "Counter 1" } });
 
-    const roleIdByName = await seedDefaultRolesForTenant(tenant.id, tx);
-    const user = await tx.user.create({
-      data: {
-        tenantId: tenant.id,
-        name: input.ownerName,
-        email: input.email,
-        phone: input.phone,
-        passwordHash,
-        roleId: roleIdByName.get("Super Admin")!,
-      },
-    });
+      const roleIdByName = await seedDefaultRolesForTenant(tenant.id, tx);
+      const user = await tx.user.create({
+        data: {
+          tenantId: tenant.id,
+          name: input.ownerName,
+          email: input.email,
+          username,
+          phone: input.phone,
+          passwordHash,
+          roleId: roleIdByName.get("Super Admin")!,
+        },
+      });
 
-    return { tenant, branch, user };
-  });
+      return { tenant, branch, user };
+    })
+  );
 }
 
 export async function listStores(query: ListStoresQuery) {
@@ -172,6 +178,7 @@ const storeUserSelect = {
   id: true,
   name: true,
   email: true,
+  username: true,
   phone: true,
   isActive: true,
   lastLoginAt: true,

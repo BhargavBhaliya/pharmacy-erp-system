@@ -5,6 +5,7 @@ interface Me {
   id: string;
   name: string;
   email: string;
+  username: string;
   tenantId: string;
   roleId: string;
   branchIds: string[];

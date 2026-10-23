@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma";
 import { authenticate, requirePermission } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
 import { hashPassword, verifyPassword } from "../../lib/password";
+import { withUniqueUsername } from "../../lib/username";
 import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
 import { notify } from "../../lib/notify";
@@ -32,6 +33,7 @@ const userSummarySelect = {
   id: true,
   name: true,
   email: true,
+  username: true,
   phone: true,
   isActive: true,
   lastLoginAt: true,
@@ -60,6 +62,11 @@ usersRouter.post("/", requirePermission("users", "add"), validateBody(createUser
     const existing = await prisma.user.findUnique({ where: { email: rest.email } });
     if (existing) throw new ConflictError("An account with this email already exists");
 
+    if (rest.username) {
+      const existingUsername = await prisma.user.findUnique({ where: { username: rest.username } });
+      if (existingUsername) throw new ConflictError("This username is already taken");
+    }
+
     const role = await assertCanAssignRole(req, rest.roleId);
 
     if (branchIds.length > 0) {
@@ -68,15 +75,22 @@ usersRouter.post("/", requirePermission("users", "add"), validateBody(createUser
     }
 
     const passwordHash = await hashPassword(password);
-    const user = await prisma.user.create({
-      data: {
-        ...rest,
-        tenantId: req.user!.tenantId,
-        passwordHash,
-        userBranches: { create: branchIds.map((branchId: string) => ({ branchId })) },
-      },
-      select: userSummarySelect,
-    });
+    const { username: explicitUsername, ...restWithoutUsername } = rest;
+    const createUser = (username: string) =>
+      prisma.user.create({
+        data: {
+          ...restWithoutUsername,
+          username,
+          tenantId: req.user!.tenantId,
+          passwordHash,
+          userBranches: { create: branchIds.map((branchId: string) => ({ branchId })) },
+        },
+        select: userSummarySelect,
+      });
+    // A caller-supplied username was already uniqueness-checked above (good enough for a
+    // manual admin choice); an auto-generated one retries end-to-end on a race, same reasoning
+    // as withUniqueUsername's own comment.
+    const user = explicitUsername ? await createUser(explicitUsername) : await withUniqueUsername(prisma, rest.name, "user", createUser);
 
     recordAudit({ req, module: "users", action: "create", entityType: "User", entityId: user.id, newValue: { email: user.email, role: role.name } });
     notify({ tenantId: req.user!.tenantId, type: "user_created", title: "New user added", message: `${user.name} was added as ${role.name}` });
@@ -96,6 +110,11 @@ usersRouter.put("/:id", requirePermission("users", "edit"), validateBody(updateU
     if (rest.roleId) {
       if (existing.id === req.user!.id) throw new ValidationError("You cannot change your own role");
       await assertCanAssignRole(req, rest.roleId);
+    }
+
+    if (rest.username) {
+      const existingUsername = await prisma.user.findUnique({ where: { username: rest.username } });
+      if (existingUsername && existingUsername.id !== existing.id) throw new ConflictError("This username is already taken");
     }
 
     const user = await prisma.$transaction(async (tx) => {

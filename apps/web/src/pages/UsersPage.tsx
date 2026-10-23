@@ -16,12 +16,13 @@ interface UserRow {
   id: string;
   name: string;
   email: string;
+  username: string;
   isActive: boolean;
   role: { id: string; name: string };
   userBranches: { branch: { id: string; name: string } }[];
 }
 
-const emptyForm = { name: "", email: "", password: "", roleId: "", branchIds: [] as string[] };
+const emptyForm = { name: "", email: "", username: "", password: "", roleId: "", branchIds: [] as string[] };
 
 export function UsersPage() {
   const { hasPermission } = useAuth();
@@ -46,7 +47,13 @@ export function UsersPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload: typeof emptyForm) => api.post("/users", payload),
+    // Omit username entirely when left blank — the backend auto-generates one, but its
+    // validation requires at least 3 characters when the field is present at all, so an empty
+    // string would fail rather than fall back.
+    mutationFn: (payload: typeof emptyForm) => {
+      const { username, ...rest } = payload;
+      return api.post("/users", username.trim() ? payload : rest);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setShowForm(false);
@@ -94,6 +101,16 @@ export function UsersPage() {
               <input type="email" className="form-control" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </div>
             <div className="col-md-6">
+              <label className="form-label">Username (optional — auto-generated if blank)</label>
+              <input
+                className="form-control"
+                pattern="[a-z0-9_]*"
+                title="Lowercase letters, numbers, and underscores only"
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+              />
+            </div>
+            <div className="col-md-6">
               <label className="form-label">Temporary password</label>
               <input type="password" className="form-control" minLength={8} required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
             </div>
@@ -138,6 +155,7 @@ export function UsersPage() {
             <tr>
               <th>Name</th>
               <th>Email</th>
+              <th>Username</th>
               <th>Role</th>
               <th>Branches</th>
               <th>Status</th>
@@ -146,7 +164,7 @@ export function UsersPage() {
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={5} className="text-center text-muted py-4">
+                <td colSpan={6} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
@@ -155,6 +173,7 @@ export function UsersPage() {
               <tr key={u.id}>
                 <td>{u.name}</td>
                 <td>{u.email}</td>
+                <td>{u.username}</td>
                 <td>
                   <span className="badge text-bg-light border">{u.role.name}</span>
                 </td>

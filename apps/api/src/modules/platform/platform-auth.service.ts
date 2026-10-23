@@ -15,7 +15,8 @@ import type { ChangePlatformAdminPasswordInput, PlatformLoginInput, UpdatePlatfo
 const DUMMY_PASSWORD_HASH = "$2a$12$CwTycUXWue0Thq9StjUM0uQxTmrjOq/Esu5tzJ2YN5yJzkC7WMZEa";
 
 export async function platformLogin(input: PlatformLoginInput, meta: { ipAddress?: string; userAgent?: string }) {
-  const admin = await prisma.platformAdmin.findUnique({ where: { email: input.email } });
+  // Accepts either email or username as the identifier, same as the tenant login.
+  const admin = await prisma.platformAdmin.findFirst({ where: { OR: [{ email: input.email }, { username: input.email }] } });
 
   const validPassword = await verifyPassword(input.password, admin?.passwordHash ?? DUMMY_PASSWORD_HASH);
   if (!admin || !validPassword) {
@@ -39,7 +40,7 @@ export async function platformLogin(input: PlatformLoginInput, meta: { ipAddress
   return {
     accessToken,
     refreshToken,
-    admin: { id: admin.id, name: admin.name, email: admin.email },
+    admin: { id: admin.id, name: admin.name, email: admin.email, username: admin.username },
   };
 }
 
@@ -84,6 +85,10 @@ export async function updatePlatformAdminProfile(adminId: string, input: UpdateP
   if (input.email) {
     const existing = await prisma.platformAdmin.findUnique({ where: { email: input.email } });
     if (existing && existing.id !== adminId) throw new ConflictError("An admin with this email already exists");
+  }
+  if (input.username) {
+    const existing = await prisma.platformAdmin.findUnique({ where: { username: input.username } });
+    if (existing && existing.id !== adminId) throw new ConflictError("An admin with this username already exists");
   }
   return prisma.platformAdmin.update({ where: { id: adminId }, data: input });
 }

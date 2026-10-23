@@ -58,8 +58,8 @@ export function LoginPage() {
           {error && <div className="alert alert-danger py-2">{error}</div>}
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
-              <label className="form-label">Email</label>
-              <input type="email" className="form-control" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <label className="form-label">Email or Username</label>
+              <input type="text" className="form-control" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
             </div>
             <div className="mb-3">
               <label className="form-label">Password</label>

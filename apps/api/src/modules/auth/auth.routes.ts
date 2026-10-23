@@ -74,6 +74,7 @@ authRouter.get("/me", authenticate, (req, res) => {
     id: req.user!.id,
     name: req.user!.name,
     email: req.user!.email,
+    username: req.user!.username,
     tenantId: req.user!.tenantId,
     roleId: req.user!.roleId,
     branchIds: req.user!.branchIds,

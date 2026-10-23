@@ -8,6 +8,7 @@ declare global {
         tenantId: string;
         roleId: string;
         email: string;
+        username: string;
         name: string;
         branchIds: string[];
         permissionCodes: Set<string>;
@@ -17,6 +18,7 @@ declare global {
         id: string;
         name: string;
         email: string;
+        username: string;
       };
     }
   }

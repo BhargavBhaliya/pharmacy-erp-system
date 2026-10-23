@@ -9,8 +9,12 @@ export const registerBusinessSchema = z.object({
 });
 export type RegisterBusinessInput = z.infer<typeof registerBusinessSchema>;
 
+// Field is still called "email" for API-compatibility (existing clients/tests), but it now
+// accepts a username too — the service looks up both in one query, so the caller never needs
+// to say which kind this is. Validation is deliberately NOT .email() anymore since a username
+// won't pass that shape.
 export const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1),
   password: z.string().min(1),
 });
 export type LoginInput = z.infer<typeof loginSchema>;

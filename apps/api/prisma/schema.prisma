@@ -101,6 +101,9 @@ model PlatformAdmin {
   id           String    @id @default(cuid())
   name         String
   email        String    @unique
+  // A short, memorable login handle alongside email — login accepts either. Globally unique for
+  // the same reason email is.
+  username     String    @unique
   passwordHash String
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
@@ -289,6 +292,9 @@ model User {
   tenantId           String
   name               String
   email              String
+  // A short, memorable login handle alongside email — login accepts either. Globally unique for
+  // the same reason email is (login looks a user up before knowing their tenant).
+  username           String    @unique
   phone              String?
   passwordHash       String
   roleId             String

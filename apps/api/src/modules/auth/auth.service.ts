@@ -8,6 +8,7 @@ import {
 } from "../../lib/jwt";
 import { seedDefaultRolesForTenant } from "../../lib/tenantSetup";
 import { nextStoreCode } from "../../lib/storeCode";
+import { withUniqueUsername } from "../../lib/username";
 import { ConflictError, UnauthorizedError } from "../../lib/errors";
 import type { LoginInput, RegisterBusinessInput } from "./auth.validation";
 
@@ -17,37 +18,42 @@ export async function registerBusiness(input: RegisterBusinessInput) {
 
   const passwordHash = await hashPassword(input.password);
 
-  return prisma.$transaction(async (tx) => {
-    const storeCode = await nextStoreCode(tx);
-    const tenant = await tx.tenant.create({
-      data: { businessName: input.businessName, ownerName: input.ownerName, email: input.email, storeCode },
-    });
+  // Retries the WHOLE transaction (not a query inside it) on a username collision — see
+  // withUniqueUsername's own comment for why that's necessary over retrying in place.
+  return withUniqueUsername(prisma, input.ownerName, "user", (username) =>
+    prisma.$transaction(async (tx) => {
+      const storeCode = await nextStoreCode(tx);
+      const tenant = await tx.tenant.create({
+        data: { businessName: input.businessName, ownerName: input.ownerName, email: input.email, storeCode },
+      });
 
-    // Default branch/warehouse/counter so the tenant is immediately usable.
-    const branch = await tx.branch.create({
-      data: { tenantId: tenant.id, name: "Main Branch", invoicePrefix: "INV" },
-    });
-    await tx.warehouse.create({ data: { tenantId: tenant.id, branchId: branch.id, name: "Main Warehouse" } });
-    await tx.counter.create({ data: { tenantId: tenant.id, branchId: branch.id, name: "Counter 1" } });
+      // Default branch/warehouse/counter so the tenant is immediately usable.
+      const branch = await tx.branch.create({
+        data: { tenantId: tenant.id, name: "Main Branch", invoicePrefix: "INV" },
+      });
+      await tx.warehouse.create({ data: { tenantId: tenant.id, branchId: branch.id, name: "Main Warehouse" } });
+      await tx.counter.create({ data: { tenantId: tenant.id, branchId: branch.id, name: "Counter 1" } });
 
-    // Must run on `tx`, not the shared client: the tenant row isn't committed yet, so a
-    // separate connection can't see it and role creation would fail its FK constraint.
-    const roleIdByName = await seedDefaultRolesForTenant(tenant.id, tx);
-    const superAdminRoleId = roleIdByName.get("Super Admin")!;
+      // Must run on `tx`, not the shared client: the tenant row isn't committed yet, so a
+      // separate connection can't see it and role creation would fail its FK constraint.
+      const roleIdByName = await seedDefaultRolesForTenant(tenant.id, tx);
+      const superAdminRoleId = roleIdByName.get("Super Admin")!;
 
-    const user = await tx.user.create({
-      data: {
-        tenantId: tenant.id,
-        name: input.ownerName,
-        email: input.email,
-        phone: input.phone,
-        passwordHash,
-        roleId: superAdminRoleId,
-      },
-    });
+      const user = await tx.user.create({
+        data: {
+          tenantId: tenant.id,
+          name: input.ownerName,
+          email: input.email,
+          username,
+          phone: input.phone,
+          passwordHash,
+          roleId: superAdminRoleId,
+        },
+      });
 
-    return { tenant, branch, user };
-  });
+      return { tenant, branch, user };
+    })
+  );
 }
 
 // A valid-shaped bcrypt hash with no corresponding password. Used so a login against a
@@ -57,8 +63,10 @@ export async function registerBusiness(input: RegisterBusinessInput) {
 const DUMMY_PASSWORD_HASH = "$2a$12$CwTycUXWue0Thq9StjUM0uQxTmrjOq/Esu5tzJ2YN5yJzkC7WMZEa";
 
 export async function login(input: LoginInput, meta: { ipAddress?: string; userAgent?: string }) {
-  const user = await prisma.user.findUnique({
-    where: { email: input.email },
+  // Accepts either email or username as the identifier — both are globally unique, so a single
+  // OR lookup finds the right row (if any) without needing to know up front which one was typed.
+  const user = await prisma.user.findFirst({
+    where: { OR: [{ email: input.email }, { username: input.email }] },
     include: { role: true, tenant: { select: { isActive: true } } },
   });
 
@@ -85,7 +93,7 @@ export async function login(input: LoginInput, meta: { ipAddress?: string; userA
   return {
     accessToken,
     refreshToken,
-    user: { id: user.id, name: user.name, email: user.email, roleName: user.role.name, tenantId: user.tenantId },
+    user: { id: user.id, name: user.name, email: user.email, username: user.username, roleName: user.role.name, tenantId: user.tenantId },
   };
 }
 

@@ -41,11 +41,11 @@ async function main() {
   const roleIdByName = await seedDefaultRolesForTenant(tenant.id);
   const passwordHash = await hashPassword(DEMO_PASSWORD);
 
-  const demoUsers: Array<{ name: string; email: string; role: string }> = [
-    { name: "Demo Owner", email: "owner@demo-pharmacy.test", role: "Super Admin" },
-    { name: "Demo Manager", email: "manager@demo-pharmacy.test", role: "Branch Manager" },
-    { name: "Demo Pharmacist", email: "pharmacist@demo-pharmacy.test", role: "Pharmacist" },
-    { name: "Demo Cashier", email: "cashier@demo-pharmacy.test", role: "Billing/Cashier" },
+  const demoUsers: Array<{ name: string; email: string; username: string; role: string }> = [
+    { name: "Demo Owner", email: "owner@demo-pharmacy.test", username: "owner", role: "Super Admin" },
+    { name: "Demo Manager", email: "manager@demo-pharmacy.test", username: "manager", role: "Branch Manager" },
+    { name: "Demo Pharmacist", email: "pharmacist@demo-pharmacy.test", username: "pharmacist", role: "Pharmacist" },
+    { name: "Demo Cashier", email: "cashier@demo-pharmacy.test", username: "cashier", role: "Billing/Cashier" },
   ];
 
   let ownerUserId = "";
@@ -53,7 +53,7 @@ async function main() {
     const roleId = roleIdByName.get(u.role as never);
     if (!roleId) continue;
     const user = await prisma.user.create({
-      data: { tenantId: tenant.id, name: u.name, email: u.email, passwordHash, roleId, userBranches: { create: [{ branchId: branch.id }] } },
+      data: { tenantId: tenant.id, name: u.name, email: u.email, username: u.username, passwordHash, roleId, userBranches: { create: [{ branchId: branch.id }] } },
     });
     if (u.role === "Super Admin") ownerUserId = user.id;
   }
@@ -159,9 +159,9 @@ async function main() {
 
   console.log("Seed complete.");
   console.log("Demo data: 3 products, 1 supplier, 1 purchase (with a near-expiry and an already-expired batch), 1 sale, 1 customer, 1 doctor, 1 expense.");
-  console.log("Demo login credentials (development only):");
+  console.log("Demo login credentials (development only) — sign in with either the email or the username:");
   for (const u of demoUsers) {
-    console.log(`  ${u.role.padEnd(16)} ${u.email}  /  ${DEMO_PASSWORD}`);
+    console.log(`  ${u.role.padEnd(16)} ${u.email} (or "${u.username}")  /  ${DEMO_PASSWORD}`);
   }
 }
 

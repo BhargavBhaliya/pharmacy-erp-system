@@ -17,7 +17,7 @@ export async function authenticatePlatformAdmin(req: Request, _res: Response, ne
     const admin = await prisma.platformAdmin.findUnique({ where: { id: payload.sub } });
     if (!admin) throw new UnauthorizedError("Account no longer exists");
 
-    req.platformAdmin = { id: admin.id, name: admin.name, email: admin.email };
+    req.platformAdmin = { id: admin.id, name: admin.name, email: admin.email, username: admin.username };
     next();
   } catch (err) {
     next(err instanceof Error && !(err instanceof UnauthorizedError) ? new UnauthorizedError() : err);
