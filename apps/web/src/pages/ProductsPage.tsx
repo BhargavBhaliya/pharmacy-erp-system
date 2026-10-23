@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
@@ -49,6 +49,13 @@ export function ProductsPage() {
   const [barcodes, setBarcodes] = useState<string[]>(emptyBarcodes);
   const [barcodeInput, setBarcodeInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  // Filters the list as you type, instead of waiting for the Search button — the button/Enter
+  // still work too, for an instant trigger without waiting out the debounce.
+  useEffect(() => {
+    const id = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(id);
+  }, [searchInput]);
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["products", search],
