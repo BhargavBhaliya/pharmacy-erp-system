@@ -11,6 +11,7 @@ interface Sale {
 interface SaleItem {
   id: string;
   quantity: number;
+  lineTotal: string;
   product: { name: string; sku: string };
   batch: { batchNumber: string };
 }
@@ -31,6 +32,9 @@ interface ReturnDraft {
   batchNumber: string;
   soldQuantity: number;
   quantity: number;
+  // Per-unit rate derived from the original sale line (lineTotal / soldQuantity) — same
+  // calculation the backend uses, so this preview always matches what actually gets saved.
+  unitRate: number;
 }
 
 export function SalesReturnsPage() {
@@ -70,6 +74,7 @@ export function SalesReturnsPage() {
           batchNumber: i.batch.batchNumber,
           soldQuantity: i.quantity,
           quantity: i.quantity,
+          unitRate: Number(i.lineTotal) / i.quantity,
         }))
       );
     } else {
@@ -92,6 +97,10 @@ export function SalesReturnsPage() {
       api.post("/sales-returns", payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sales-returns"] });
+      // A return that auto-approves immediately reduces the original sale's totalAmount/
+      // paidAmount server-side — refetch so the Sales list reflects that right away instead of
+      // showing the pre-return figures until something else happens to trigger a refetch.
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
       setShowForm(false);
       setSaleId("");
       setReason("");
@@ -119,6 +128,8 @@ export function SalesReturnsPage() {
     mutationFn: ({ id, action }: { id: string; action: "approve" | "reject" }) => api.put(`/sales-returns/${id}/${action}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sales-returns"] });
+      // Approving (not rejecting) also reduces the original sale's totals server-side.
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
       setError(null);
     },
     onError: (err, variables) => {
@@ -177,13 +188,14 @@ export function SalesReturnsPage() {
                     <th>Batch</th>
                     <th className="text-end">Sold qty</th>
                     <th style={{ width: 110 }}>Return qty</th>
+                    <th className="text-end">Amount</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {draftItems.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="text-center text-muted py-3">
+                      <td colSpan={6} className="text-center text-muted py-3">
                         All items removed — add the invoice again or close this form.
                       </td>
                     </tr>
@@ -206,6 +218,7 @@ export function SalesReturnsPage() {
                           onChange={(e) => updateDraftQuantity(d.saleItemId, Number(e.target.value))}
                         />
                       </td>
+                      <td className="text-end">₹{(d.unitRate * d.quantity).toFixed(2)}</td>
                       <td>
                         <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeDraftItem(d.saleItemId)}>
                           ×
@@ -214,6 +227,17 @@ export function SalesReturnsPage() {
                     </tr>
                   ))}
                 </tbody>
+                {draftItems.length > 0 && (
+                  <tfoot>
+                    <tr className="fw-semibold">
+                      <td colSpan={4} className="text-end">
+                        Total return amount
+                      </td>
+                      <td className="text-end">₹{draftItems.reduce((sum, d) => sum + d.unitRate * d.quantity, 0).toFixed(2)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           )}

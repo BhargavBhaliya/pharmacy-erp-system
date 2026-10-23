@@ -57,6 +57,21 @@ async function processApproval(returnId: string, userId: string) {
       });
     }
     await tx.salesReturn.update({ where: { id: salesReturn.id }, data: { status: "APPROVED", approvedById: userId, refundAmount: salesReturn.totalAmount } });
+
+    // Keep the original invoice honest: once goods are actually back on the shelf, the sale's
+    // own totals should read as if the returned line was never sold, not still show the
+    // original (now-overstated) amount forever. paidAmount comes down by the same amount (the
+    // customer gets that value back, whether as cash-in-hand or a lower balance owed), capped at
+    // 0 — never allowed to go negative or to exceed the new totalAmount.
+    const sale = await tx.sale.findUniqueOrThrow({ where: { id: salesReturn.saleId } });
+    const refund = Number(salesReturn.totalAmount);
+    const newTotalAmount = round2(Math.max(Number(sale.totalAmount) - refund, 0));
+    const newPaidAmount = round2(Math.max(Math.min(Number(sale.paidAmount) - refund, newTotalAmount), 0));
+    const newPaymentStatus = newPaidAmount <= 0 ? "UNPAID" : newPaidAmount >= newTotalAmount - 0.01 ? "PAID" : "PARTIAL";
+    await tx.sale.update({
+      where: { id: sale.id },
+      data: { totalAmount: newTotalAmount, paidAmount: newPaidAmount, paymentStatus: newPaymentStatus },
+    });
   });
 }
 

@@ -228,6 +228,13 @@ describe("sales returns", () => {
 
     const batchAfter = await prisma.batch.findUnique({ where: { id: batch.id } });
     expect(batchAfter?.quantity).toBe(14); // 20 - 10 sold + 4 returned
+
+    // An approved return reduces the original sale's own totals (not just stock) — the
+    // invoice should read as if the returned 4 units were never sold.
+    const saleAfter = await prisma.sale.findUniqueOrThrow({ where: { id: sale.body.data.id } });
+    expect(Number(saleAfter.totalAmount)).toBeCloseTo(200 - Number(ret.body.data.totalAmount), 2);
+    expect(Number(saleAfter.paidAmount)).toBeCloseTo(200 - Number(ret.body.data.totalAmount), 2);
+    expect(saleAfter.paymentStatus).toBe("PAID");
   });
 
   it("a pharmacist's return stays pending until a manager approves it (pharmacist can add but not approve)", async () => {
@@ -252,11 +259,17 @@ describe("sales returns", () => {
     const batchWhilePending = await prisma.batch.findUnique({ where: { id: batch.id } });
     expect(batchWhilePending?.quantity).toBe(14); // not restored yet
 
+    const saleWhilePending = await prisma.sale.findUniqueOrThrow({ where: { id: sale.body.data.id } });
+    expect(Number(saleWhilePending.totalAmount)).toBeCloseTo(120, 2); // untouched until approved
+
     const approved = await request(app).put(`/api/sales-returns/${ret.body.data.id}/approve`).set("Authorization", `Bearer ${t.token}`);
     expect(approved.status).toBe(200);
     expect(approved.body.data.status).toBe("APPROVED");
 
     const batchAfterApproval = await prisma.batch.findUnique({ where: { id: batch.id } });
     expect(batchAfterApproval?.quantity).toBe(16);
+
+    const saleAfterApproval = await prisma.sale.findUniqueOrThrow({ where: { id: sale.body.data.id } });
+    expect(Number(saleAfterApproval.totalAmount)).toBeCloseTo(120 - Number(ret.body.data.totalAmount), 2);
   });
 });
