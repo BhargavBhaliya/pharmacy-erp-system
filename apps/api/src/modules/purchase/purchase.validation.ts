@@ -54,17 +54,13 @@ export const createPurchasePaymentSchema = z.object({
 export type CreatePurchasePaymentInput = z.infer<typeof createPurchasePaymentSchema>;
 
 export const createPurchaseReturnSchema = z.object({
-  branchId: z.string().min(1),
-  supplierId: z.string().min(1),
-  purchaseId: z.string().optional(),
+  purchaseId: z.string().min(1),
   reason: z.string().optional(),
   items: z
     .array(
       z.object({
-        productId: z.string().min(1),
-        batchId: z.string().min(1),
+        purchaseItemId: z.string().min(1),
         quantity: z.number().int().positive(),
-        rate: z.number().min(0),
       })
     )
     .min(1),

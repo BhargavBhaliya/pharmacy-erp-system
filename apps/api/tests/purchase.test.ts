@@ -171,7 +171,7 @@ describe("purchase workflow", () => {
     expect(full.body.data.paymentStatus).toBe("PAID");
   });
 
-  it("purchase return reduces stock and rejects returning more than is available", async () => {
+  it("purchase return reduces stock and the purchase's own totals, and rejects returning more than is available", async () => {
     const t = await setupTenant("Purchase Pharmacy 5");
     const product = await createProduct(t.token);
     const supplier = await createSupplier(t.token);
@@ -185,21 +185,37 @@ describe("purchase workflow", () => {
         items: [{ productId: product.id, batchNumber: "RET-01", expiryDate: new Date(Date.now() + 300 * 86_400_000).toISOString(), quantity: 20, purchaseRate: 30, mrp: 50, gstRatePercent: 0 }],
       });
     const batchId = purchase.body.data.items[0].batch.id;
+    const purchaseItemId = purchase.body.data.items[0].id;
+    expect(Number(purchase.body.data.totalAmount)).toBeCloseTo(600); // 20 * 30
 
     const tooMany = await request(app)
       .post("/api/purchase-returns")
       .set("Authorization", `Bearer ${t.token}`)
-      .send({ branchId: t.branchId, supplierId: supplier.id, purchaseId: purchase.body.data.id, items: [{ productId: product.id, batchId, quantity: 999, rate: 30 }] });
+      .send({ purchaseId: purchase.body.data.id, items: [{ purchaseItemId, quantity: 999 }] });
     expect(tooMany.status).toBe(422);
 
     const ok = await request(app)
       .post("/api/purchase-returns")
       .set("Authorization", `Bearer ${t.token}`)
-      .send({ branchId: t.branchId, supplierId: supplier.id, purchaseId: purchase.body.data.id, items: [{ productId: product.id, batchId, quantity: 5, rate: 30 }] });
+      .send({ purchaseId: purchase.body.data.id, items: [{ purchaseItemId, quantity: 5 }] });
     expect(ok.status).toBe(201);
     expect(ok.body.data.referenceNumber).toMatch(/^PRET\/\d{4}-\d{2}\/\d{6}$/);
+    expect(Number(ok.body.data.totalAmount)).toBeCloseTo(150); // 5 * 30
 
     const batch = await prisma.batch.findUnique({ where: { id: batchId } });
     expect(batch?.quantity).toBe(15);
+
+    // The purchase's own totals should now read as if the returned 5 units were never bought.
+    const purchaseAfter = await prisma.purchase.findUniqueOrThrow({ where: { id: purchase.body.data.id } });
+    expect(Number(purchaseAfter.totalAmount)).toBeCloseTo(450); // 600 - 150
+    expect(Number(purchaseAfter.paidAmount)).toBe(0); // was already UNPAID, stays floored at 0
+    expect(purchaseAfter.paymentStatus).toBe("UNPAID");
+
+    // Returning more from the same line than remains is rejected (20 bought, 5 already returned).
+    const overReturn = await request(app)
+      .post("/api/purchase-returns")
+      .set("Authorization", `Bearer ${t.token}`)
+      .send({ purchaseId: purchase.body.data.id, items: [{ purchaseItemId, quantity: 16 }] });
+    expect(overReturn.status).toBe(422);
   });
 });

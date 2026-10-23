@@ -4,20 +4,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
-interface Branch {
+interface Purchase {
   id: string;
-  name: string;
+  referenceNumber: string;
+  supplierInvoiceNumber?: string | null;
 }
-interface Supplier {
+interface PurchaseItem {
   id: string;
-  name: string;
-}
-interface Batch {
-  id: string;
-  batchNumber: string;
   quantity: number;
-  purchaseRate: string;
-  product: { id: string; name: string; sku: string };
+  lineTotal: string;
+  product: { name: string; sku: string };
+  batch: { batchNumber: string } | null;
 }
 interface ReturnRow {
   id: string;
@@ -25,35 +22,34 @@ interface ReturnRow {
   totalAmount: string;
   reason?: string | null;
   supplier: { name: string };
-  branch: { name: string };
-  items: { id: string; quantity: number; product: { name: string }; batch: { batchNumber: string } }[];
+  purchase: { referenceNumber: string };
+  items: { id: string; quantity: number; product: { name: string } }[];
   createdAt: string;
 }
-
-const emptyForm = { branchId: "", supplierId: "", batchId: "", quantity: 1, reason: "" };
+interface ReturnDraft {
+  purchaseItemId: string;
+  productName: string;
+  sku: string;
+  batchNumber: string;
+  purchasedQuantity: number;
+  quantity: number;
+  // Per-unit rate derived from the original purchase line (lineTotal / purchasedQuantity) — same
+  // calculation the backend uses, so this preview always matches what actually gets saved.
+  unitRate: number;
+}
 
 export function PurchaseReturnsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
-  const [batchSearch, setBatchSearch] = useState("");
+  const [purchaseId, setPurchaseId] = useState("");
+  const [draftItems, setDraftItems] = useState<ReturnDraft[]>([]);
+  const [reason, setReason] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: branches = [] } = useQuery({
-    queryKey: ["branches"],
-    queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
-  });
-
-  const { data: suppliers = [] } = useQuery({
-    queryKey: ["suppliers"],
-    queryFn: async () => (await api.get<{ data: Supplier[] }>("/suppliers")).data.data,
-  });
-
-  const { data: batches = [] } = useQuery({
-    queryKey: ["batches", form.branchId],
-    queryFn: async () => (await api.get<{ data: Batch[] }>("/batches", { params: { branchId: form.branchId, status: "available" } })).data.data,
-    enabled: !!form.branchId,
+  const { data: purchases = [] } = useQuery({
+    queryKey: ["purchases"],
+    queryFn: async () => (await api.get<{ data: Purchase[] }>("/purchases")).data.data,
   });
 
   const { data: returns = [], isLoading } = useQuery({
@@ -61,33 +57,56 @@ export function PurchaseReturnsPage() {
     queryFn: async () => (await api.get<{ data: ReturnRow[] }>("/purchase-returns")).data.data,
   });
 
-  // Clear the batch search box whenever the selected branch changes, matching the fresh batch list.
-  useEffect(() => {
-    setBatchSearch("");
-  }, [form.branchId]);
-
-  const filteredBatches = batches.filter((b) => {
-    const q = batchSearch.trim().toLowerCase();
-    if (!q) return true;
-    return b.product.name.toLowerCase().includes(q) || b.product.sku.toLowerCase().includes(q) || b.batchNumber.toLowerCase().includes(q);
+  const { data: purchaseItems = [] } = useQuery({
+    queryKey: ["purchase-items", purchaseId],
+    queryFn: async () => (await api.get(`/purchases/${purchaseId}`)).data.data.items as PurchaseItem[],
+    enabled: !!purchaseId,
   });
 
-  // Scanning a barcode/SKU narrows this down to one row — select it automatically so the
-  // cashier doesn't also have to touch the dropdown.
+  // Picking an invoice auto-fills every item bought on it (full quantity, editable) — no more
+  // picking a batch one at a time. Remove a row to exclude that product from the return.
   useEffect(() => {
-    if (batchSearch.trim().length >= 2 && filteredBatches.length === 1) {
-      setForm((prev) => ({ ...prev, batchId: filteredBatches[0].id }));
+    if (purchaseId && purchaseItems.length > 0) {
+      setDraftItems(
+        purchaseItems
+          .filter((i) => i.batch)
+          .map((i) => ({
+            purchaseItemId: i.id,
+            productName: i.product.name,
+            sku: i.product.sku,
+            batchNumber: i.batch!.batchNumber,
+            purchasedQuantity: i.quantity,
+            quantity: i.quantity,
+            unitRate: Number(i.lineTotal) / i.quantity,
+          }))
+      );
+    } else {
+      setDraftItems([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchSearch, batches]);
+  }, [purchaseId, purchaseItems]);
+
+  function updateDraftQuantity(purchaseItemId: string, quantity: number) {
+    setDraftItems((prev) =>
+      prev.map((d) => (d.purchaseItemId === purchaseItemId ? { ...d, quantity: Math.max(1, Math.min(quantity, d.purchasedQuantity)) } : d))
+    );
+  }
+
+  function removeDraftItem(purchaseItemId: string) {
+    setDraftItems((prev) => prev.filter((d) => d.purchaseItemId !== purchaseItemId));
+  }
 
   const createMutation = useMutation({
-    mutationFn: (payload: { branchId: string; supplierId: string; reason?: string; items: { productId: string; batchId: string; quantity: number; rate: number }[] }) =>
+    mutationFn: (payload: { purchaseId: string; items: { purchaseItemId: string; quantity: number }[]; reason?: string }) =>
       api.post("/purchase-returns", payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purchase-returns"] });
+      // A return immediately reduces the original purchase's totalAmount/paidAmount server-side
+      // — refetch so the Purchases list reflects that right away instead of showing the
+      // pre-return figures until something else happens to trigger a refetch.
+      queryClient.invalidateQueries({ queryKey: ["purchases"] });
       setShowForm(false);
-      setForm(emptyForm);
+      setPurchaseId("");
+      setReason("");
       setError(null);
     },
     onError: (err) => {
@@ -97,16 +116,14 @@ export function PurchaseReturnsPage() {
 
   function handleCreate(e: FormEvent) {
     e.preventDefault();
-    const batch = batches.find((b) => b.id === form.batchId);
-    if (!batch) {
-      setError("Select a batch");
+    if (draftItems.length === 0) {
+      setError("Add at least one item to return");
       return;
     }
     createMutation.mutate({
-      branchId: form.branchId,
-      supplierId: form.supplierId,
-      reason: form.reason || undefined,
-      items: [{ productId: batch.product.id, batchId: batch.id, quantity: form.quantity, rate: Number(batch.purchaseRate) }],
+      purchaseId,
+      items: draftItems.map((d) => ({ purchaseItemId: d.purchaseItemId, quantity: d.quantity })),
+      reason: reason || undefined,
     });
   }
 
@@ -125,57 +142,89 @@ export function PurchaseReturnsPage() {
 
       {showForm && (
         <form className="card card-body mb-4" onSubmit={handleCreate}>
-          <div className="row g-3">
-            <div className="col-md-3">
-              <label className="form-label">Branch</label>
-              <select className="form-select" required value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value, batchId: "" })}>
-                <option value="">Select</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
+          <div className="row g-3 mb-2">
+            <div className="col-md-5">
+              <label className="form-label">Purchase invoice</label>
+              <select className="form-select" required value={purchaseId} onChange={(e) => setPurchaseId(e.target.value)}>
+                <option value="">Select invoice</option>
+                {purchases.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.referenceNumber}
+                    {p.supplierInvoiceNumber ? ` (${p.supplierInvoiceNumber})` : ""}
                   </option>
                 ))}
               </select>
             </div>
-            <div className="col-md-3">
-              <label className="form-label">Supplier</label>
-              <select className="form-select" required value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
-                <option value="">Select</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="col-md-3">
-              <label className="form-label">Batch</label>
-              <input
-                className="form-control form-control-sm mb-1"
-                placeholder="Scan barcode or search product/batch..."
-                value={batchSearch}
-                onChange={(e) => setBatchSearch(e.target.value)}
-                disabled={!form.branchId}
-              />
-              <select className="form-select" required value={form.batchId} onChange={(e) => setForm({ ...form, batchId: e.target.value })}>
-                <option value="">Select batch</option>
-                {filteredBatches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.product.name} — {b.batchNumber} (avail {b.quantity})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="col-md-1">
-              <label className="form-label">Qty</label>
-              <input type="number" className="form-control" min={1} required value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} />
-            </div>
-            <div className="col-md-2">
+            <div className="col-md-7">
               <label className="form-label">Reason</label>
-              <input className="form-control" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
+              <input className="form-control" value={reason} onChange={(e) => setReason(e.target.value)} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending}>
+
+          {purchaseId && (
+            <div className="table-responsive">
+              <table className="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Batch</th>
+                    <th className="text-end">Purchased qty</th>
+                    <th style={{ width: 110 }}>Return qty</th>
+                    <th className="text-end">Amount</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {draftItems.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="text-center text-muted py-3">
+                        All items removed — add the invoice again or close this form.
+                      </td>
+                    </tr>
+                  )}
+                  {draftItems.map((d) => (
+                    <tr key={d.purchaseItemId}>
+                      <td>
+                        {d.productName}
+                        <div className="text-muted small">{d.sku}</div>
+                      </td>
+                      <td>{d.batchNumber}</td>
+                      <td className="text-end">{d.purchasedQuantity}</td>
+                      <td>
+                        <input
+                          type="number"
+                          className="form-control form-control-sm"
+                          min={1}
+                          max={d.purchasedQuantity}
+                          value={d.quantity}
+                          onChange={(e) => updateDraftQuantity(d.purchaseItemId, Number(e.target.value))}
+                        />
+                      </td>
+                      <td className="text-end">₹{(d.unitRate * d.quantity).toFixed(2)}</td>
+                      <td>
+                        <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeDraftItem(d.purchaseItemId)}>
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                {draftItems.length > 0 && (
+                  <tfoot>
+                    <tr className="fw-semibold">
+                      <td colSpan={4} className="text-end">
+                        Total return amount
+                      </td>
+                      <td className="text-end">₹{draftItems.reduce((sum, d) => sum + d.unitRate * d.quantity, 0).toFixed(2)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          )}
+
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending || draftItems.length === 0}>
             {createMutation.isPending ? "Saving..." : "Save return"}
           </button>
         </form>
@@ -187,7 +236,7 @@ export function PurchaseReturnsPage() {
             <tr>
               <th>Reference #</th>
               <th>Supplier</th>
-              <th>Branch</th>
+              <th>Purchase invoice</th>
               <th>Items</th>
               <th>Total</th>
               <th>Date</th>
@@ -205,11 +254,11 @@ export function PurchaseReturnsPage() {
               <tr key={r.id}>
                 <td>{r.referenceNumber}</td>
                 <td>{r.supplier.name}</td>
-                <td>{r.branch.name}</td>
+                <td>{r.purchase.referenceNumber}</td>
                 <td>
                   {r.items.map((i) => (
                     <div key={i.id} className="small">
-                      {i.product.name} ({i.batch.batchNumber}) × {i.quantity}
+                      {i.product.name} × {i.quantity}
                     </div>
                   ))}
                 </td>

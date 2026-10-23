@@ -189,12 +189,12 @@ model StorePayment {
 // comment), so the name is captured as a plain string at write time rather than relating to a
 // row that could theoretically be deleted/recreated.
 model StoreNote {
-  id              String   @id @default(cuid())
-  tenantId        String
-  note            String   @db.Text
-  createdByName   String
-  createdByEmail  String
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  tenantId       String
+  note           String   @db.Text
+  createdByName  String
+  createdByEmail String
+  createdAt      DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -881,9 +881,10 @@ model PurchaseItem {
   gstRatePercent  Decimal   @default(0) @db.Decimal(5, 2)
   lineTotal       Decimal   @db.Decimal(14, 2)
 
-  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  batch    Batch?   @relation(fields: [batchId], references: [id])
+  purchase            Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product             Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batch               Batch?               @relation(fields: [batchId], references: [id])
+  purchaseReturnItems PurchaseReturnItem[]
 
   @@index([purchaseId])
   @@map("purchase_items")
@@ -913,7 +914,7 @@ model PurchaseReturn {
   tenantId        String
   branchId        String
   supplierId      String
-  purchaseId      String?
+  purchaseId      String
   referenceNumber String
   returnDate      DateTime @default(now())
   reason          String?
@@ -924,7 +925,7 @@ model PurchaseReturn {
   tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch   Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
   supplier Supplier             @relation(fields: [supplierId], references: [id])
-  purchase Purchase?            @relation(fields: [purchaseId], references: [id])
+  purchase Purchase             @relation(fields: [purchaseId], references: [id])
   items    PurchaseReturnItem[]
 
   @@unique([tenantId, referenceNumber])
@@ -935,6 +936,7 @@ model PurchaseReturn {
 model PurchaseReturnItem {
   id               String  @id @default(cuid())
   purchaseReturnId String
+  purchaseItemId   String
   productId        String
   batchId          String
   quantity         Int
@@ -942,10 +944,12 @@ model PurchaseReturnItem {
   lineTotal        Decimal @db.Decimal(14, 2)
 
   purchaseReturn PurchaseReturn @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
+  purchaseItem   PurchaseItem   @relation(fields: [purchaseItemId], references: [id])
   product        Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
   batch          Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@index([purchaseReturnId])
+  @@index([purchaseItemId])
   @@map("purchase_return_items")
 }
 
