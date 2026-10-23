@@ -12,6 +12,15 @@ interface Supplier {
   id: string;
   name: string;
 }
+interface Purchase {
+  id: string;
+  referenceNumber: string;
+  supplierInvoiceNumber?: string | null;
+  supplierId: string;
+  totalAmount: string;
+  paidAmount: string;
+  paymentStatus: string;
+}
 interface SupplierPayment {
   id: string;
   amount: string;
@@ -25,7 +34,7 @@ export function PaymentsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ branchId: "", partyId: "", amount: 0, paymentMode: "CASH" });
+  const [form, setForm] = useState({ branchId: "", partyId: "", purchaseId: "", amount: 0, paymentMode: "CASH" });
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -38,6 +47,15 @@ export function PaymentsPage() {
     queryKey: ["suppliers"],
     queryFn: async () => (await api.get<{ data: Supplier[] }>("/suppliers")).data.data,
   });
+
+  const { data: purchases = [] } = useQuery({
+    queryKey: ["purchases"],
+    queryFn: async () => (await api.get<{ data: Purchase[] }>("/purchases")).data.data,
+  });
+
+  // Only this supplier's invoices that still owe money — picking one applies the whole payment
+  // to it instead of the default oldest-invoice-first behavior.
+  const outstandingPurchases = purchases.filter((p) => p.supplierId === form.partyId && p.paymentStatus !== "PAID");
 
   const { data: supplierPayments = [] } = useQuery({
     queryKey: ["supplier-payments"],
@@ -52,7 +70,7 @@ export function PaymentsPage() {
         setInfo(`₹${res.data.unallocatedAmount} could not be applied — no more outstanding invoices.`);
       }
       setShowForm(false);
-      setForm({ branchId: "", partyId: "", amount: 0, paymentMode: "CASH" });
+      setForm({ branchId: "", partyId: "", purchaseId: "", amount: 0, paymentMode: "CASH" });
     },
     onError: (err) => {
       setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to record payment");
@@ -63,7 +81,13 @@ export function PaymentsPage() {
     e.preventDefault();
     setError(null);
     setInfo(null);
-    createMutation.mutate({ branchId: form.branchId, supplierId: form.partyId, amount: form.amount, paymentMode: form.paymentMode });
+    createMutation.mutate({
+      branchId: form.branchId,
+      supplierId: form.partyId,
+      purchaseId: form.purchaseId || undefined,
+      amount: form.amount,
+      paymentMode: form.paymentMode,
+    });
   }
 
   const canAdd = hasPermission("purchase", "edit");
@@ -97,13 +121,37 @@ export function PaymentsPage() {
             </div>
             <div className="col-md-3">
               <label className="form-label">Supplier</label>
-              <select className="form-select" required value={form.partyId} onChange={(e) => setForm({ ...form, partyId: e.target.value })}>
+              <select
+                className="form-select"
+                required
+                value={form.partyId}
+                onChange={(e) => setForm({ ...form, partyId: e.target.value, purchaseId: "" })}
+              >
                 <option value="">Select</option>
                 {suppliers.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div className="col-md-3">
+              <label className="form-label">Against invoice</label>
+              <select
+                className="form-select"
+                value={form.purchaseId}
+                disabled={!form.partyId}
+                onChange={(e) => setForm({ ...form, purchaseId: e.target.value })}
+              >
+                <option value="">Oldest outstanding first (auto)</option>
+                {outstandingPurchases.map((p) => {
+                  const due = Number(p.totalAmount) - Number(p.paidAmount);
+                  return (
+                    <option key={p.id} value={p.id}>
+                      {p.referenceNumber} — due ₹{due.toFixed(2)}
+                    </option>
+                  );
+                })}
               </select>
             </div>
             <div className="col-md-2">
@@ -121,7 +169,9 @@ export function PaymentsPage() {
               </select>
             </div>
           </div>
-          <div className="form-text">Automatically applied to the oldest outstanding invoices first (FIFO).</div>
+          <div className="form-text">
+            {form.purchaseId ? "Applied entirely to the selected invoice." : "Automatically applied to the oldest outstanding invoices first (FIFO)."}
+          </div>
           <button type="submit" className="btn btn-primary mt-2" style={{ width: 160 }} disabled={createMutation.isPending}>
             {createMutation.isPending ? "Saving..." : "Save"}
           </button>

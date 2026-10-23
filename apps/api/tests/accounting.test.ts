@@ -137,6 +137,39 @@ describe("supplier payments (FIFO allocation)", () => {
     expect(purchase1After?.paymentStatus).toBe("PARTIAL");
     expect(Number(purchase1After?.paidAmount)).toBe(120);
   });
+
+  it("a payment with purchaseId set applies only to that invoice, bypassing FIFO", async () => {
+    const t = await setupTenant("Accounting Pharmacy 5");
+    const product = await createProduct(t.token);
+    const supplier = await request(app).post("/api/suppliers").set("Authorization", `Bearer ${t.token}`).send({ name: "Targeted Supplier" });
+
+    const purchase1 = await request(app)
+      .post("/api/purchases")
+      .set("Authorization", `Bearer ${t.token}`)
+      .send({ branchId: t.branchId, supplierId: supplier.body.data.id, items: [{ productId: product.id, batchNumber: "TP-1", expiryDate: new Date(Date.now() + 300 * 86_400_000).toISOString(), quantity: 10, purchaseRate: 20, mrp: 30, gstRatePercent: 0 }] }); // 200 due, older
+    const purchase2 = await request(app)
+      .post("/api/purchases")
+      .set("Authorization", `Bearer ${t.token}`)
+      .send({ branchId: t.branchId, supplierId: supplier.body.data.id, items: [{ productId: product.id, batchNumber: "TP-2", expiryDate: new Date(Date.now() + 300 * 86_400_000).toISOString(), quantity: 5, purchaseRate: 20, mrp: 30, gstRatePercent: 0 }] }); // 100 due, newer
+
+    const tooMuch = await request(app)
+      .post("/api/supplier-payments")
+      .set("Authorization", `Bearer ${t.token}`)
+      .send({ branchId: t.branchId, supplierId: supplier.body.data.id, purchaseId: purchase2.body.data.id, amount: 150, paymentMode: "CASH" });
+    expect(tooMuch.status).toBe(422);
+
+    const payment = await request(app)
+      .post("/api/supplier-payments")
+      .set("Authorization", `Bearer ${t.token}`)
+      .send({ branchId: t.branchId, supplierId: supplier.body.data.id, purchaseId: purchase2.body.data.id, amount: 100, paymentMode: "CASH" });
+    expect(payment.status).toBe(201);
+
+    const purchase1After = await prisma.purchase.findUnique({ where: { id: purchase1.body.data.id } });
+    const purchase2After = await prisma.purchase.findUnique({ where: { id: purchase2.body.data.id } });
+    expect(purchase1After?.paymentStatus).toBe("UNPAID"); // untouched, even though it's older
+    expect(purchase2After?.paymentStatus).toBe("PAID");
+    expect(Number(purchase2After?.paidAmount)).toBe(100);
+  });
 });
 
 describe("cash session", () => {

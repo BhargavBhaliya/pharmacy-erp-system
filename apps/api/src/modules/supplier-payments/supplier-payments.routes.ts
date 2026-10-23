@@ -32,8 +32,9 @@ supplierPaymentsRouter.get("/", requirePermission("purchase", "view"), async (re
   }
 });
 
-// Mirrors receipts.routes.ts: pays off the supplier's oldest unpaid purchases first, writing a
-// PurchasePayment row per invoice touched.
+// A specific purchaseId pays only that invoice (rejected if it exceeds that invoice's own
+// outstanding balance); otherwise this mirrors receipts.routes.ts, paying off the supplier's
+// oldest unpaid purchases first. Either way it writes a PurchasePayment row per invoice touched.
 supplierPaymentsRouter.post("/", requirePermission("purchase", "edit"), validateBody(createSupplierPaymentSchema), async (req, res, next) => {
   try {
     assertBranchAccessible(req, req.body.branchId);
@@ -41,10 +42,21 @@ supplierPaymentsRouter.post("/", requirePermission("purchase", "edit"), validate
     const supplier = await prisma.supplier.findFirst({ where: { id: req.body.supplierId, tenantId: req.user!.tenantId } });
     if (!supplier) throw new ValidationError("Invalid supplierId for this tenant");
 
-    const outstandingPurchases = await prisma.purchase.findMany({
-      where: { tenantId: req.user!.tenantId, supplierId: supplier.id, status: "CONFIRMED", paymentStatus: { in: ["UNPAID", "PARTIAL"] } },
-      orderBy: { createdAt: "asc" },
-    });
+    let outstandingPurchases;
+    if (req.body.purchaseId) {
+      const purchase = await prisma.purchase.findFirst({ where: { id: req.body.purchaseId, tenantId: req.user!.tenantId, supplierId: supplier.id } });
+      if (!purchase) throw new ValidationError("Invalid purchaseId for this supplier");
+      const outstanding = Number(purchase.totalAmount) - Number(purchase.paidAmount);
+      if (req.body.amount > outstanding + 0.01) {
+        throw new ValidationError(`Payment of ${req.body.amount} exceeds this invoice's outstanding balance of ${outstanding.toFixed(2)}`);
+      }
+      outstandingPurchases = [purchase];
+    } else {
+      outstandingPurchases = await prisma.purchase.findMany({
+        where: { tenantId: req.user!.tenantId, supplierId: supplier.id, status: "CONFIRMED", paymentStatus: { in: ["UNPAID", "PARTIAL"] } },
+        orderBy: { createdAt: "asc" },
+      });
+    }
 
     let remaining = req.body.amount;
     const allocations: { purchaseId: string; amount: number }[] = [];
