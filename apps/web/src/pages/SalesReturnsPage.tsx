@@ -24,14 +24,20 @@ interface ReturnRow {
   items: { id: string; quantity: number; product: { name: string } }[];
   createdAt: string;
 }
+interface ReturnDraft {
+  saleItemId: string;
+  productName: string;
+  sku: string;
+  batchNumber: string;
+  soldQuantity: number;
+  quantity: number;
+}
 
 export function SalesReturnsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [saleId, setSaleId] = useState("");
-  const [itemSearch, setItemSearch] = useState("");
-  const [saleItemId, setSaleItemId] = useState("");
-  const [quantity, setQuantity] = useState(1);
+  const [draftItems, setDraftItems] = useState<ReturnDraft[]>([]);
   const [reason, setReason] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,23 +58,34 @@ export function SalesReturnsPage() {
     enabled: !!saleId,
   });
 
+  // Picking an invoice auto-fills every item it sold (full quantity, editable) — no more
+  // scanning/searching one item at a time. Remove a row to exclude that product from the return.
   useEffect(() => {
-    setSaleItemId("");
-    setItemSearch("");
-  }, [saleId]);
-
-  const filteredSaleItems = saleItems.filter((i) => {
-    const q = itemSearch.trim().toLowerCase();
-    if (!q) return true;
-    return i.product.name.toLowerCase().includes(q) || i.product.sku.toLowerCase().includes(q) || i.batch.batchNumber.toLowerCase().includes(q);
-  });
-
-  useEffect(() => {
-    if (itemSearch.trim().length >= 2 && filteredSaleItems.length === 1) {
-      setSaleItemId(filteredSaleItems[0].id);
+    if (saleId && saleItems.length > 0) {
+      setDraftItems(
+        saleItems.map((i) => ({
+          saleItemId: i.id,
+          productName: i.product.name,
+          sku: i.product.sku,
+          batchNumber: i.batch.batchNumber,
+          soldQuantity: i.quantity,
+          quantity: i.quantity,
+        }))
+      );
+    } else {
+      setDraftItems([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemSearch, saleItems]);
+  }, [saleId, saleItems]);
+
+  function updateDraftQuantity(saleItemId: string, quantity: number) {
+    setDraftItems((prev) =>
+      prev.map((d) => (d.saleItemId === saleItemId ? { ...d, quantity: Math.max(1, Math.min(quantity, d.soldQuantity)) } : d))
+    );
+  }
+
+  function removeDraftItem(saleItemId: string) {
+    setDraftItems((prev) => prev.filter((d) => d.saleItemId !== saleItemId));
+  }
 
   const createMutation = useMutation({
     mutationFn: (payload: { saleId: string; items: { saleItemId: string; quantity: number }[]; reason?: string }) =>
@@ -77,7 +94,6 @@ export function SalesReturnsPage() {
       queryClient.invalidateQueries({ queryKey: ["sales-returns"] });
       setShowForm(false);
       setSaleId("");
-      setQuantity(1);
       setReason("");
       setError(null);
     },
@@ -88,7 +104,15 @@ export function SalesReturnsPage() {
 
   function handleCreate(e: FormEvent) {
     e.preventDefault();
-    createMutation.mutate({ saleId, items: [{ saleItemId, quantity }], reason: reason || undefined });
+    if (draftItems.length === 0) {
+      setError("Add at least one item to return");
+      return;
+    }
+    createMutation.mutate({
+      saleId,
+      items: draftItems.map((d) => ({ saleItemId: d.saleItemId, quantity: d.quantity })),
+      reason: reason || undefined,
+    });
   }
 
   const actionMutation = useMutation({
@@ -126,8 +150,8 @@ export function SalesReturnsPage() {
 
       {showForm && (
         <form className="card card-body mb-4" onSubmit={handleCreate}>
-          <div className="row g-3">
-            <div className="col-md-4">
+          <div className="row g-3 mb-2">
+            <div className="col-md-5">
               <label className="form-label">Invoice</label>
               <select className="form-select" required value={saleId} onChange={(e) => setSaleId(e.target.value)}>
                 <option value="">Select invoice</option>
@@ -138,35 +162,64 @@ export function SalesReturnsPage() {
                 ))}
               </select>
             </div>
-            <div className="col-md-4">
-              <label className="form-label">Item</label>
-              <input
-                className="form-control form-control-sm mb-1"
-                placeholder="Scan barcode or search product..."
-                value={itemSearch}
-                onChange={(e) => setItemSearch(e.target.value)}
-                disabled={!saleId}
-              />
-              <select className="form-select" required value={saleItemId} onChange={(e) => setSaleItemId(e.target.value)}>
-                <option value="">Select item</option>
-                {filteredSaleItems.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.product.name} ({i.batch.batchNumber}) — sold {i.quantity}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="col-md-1">
-              <label className="form-label">Qty</label>
-              <input type="number" className="form-control" min={1} required value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
-            </div>
-            <div className="col-md-3">
+            <div className="col-md-7">
               <label className="form-label">Reason</label>
               <input className="form-control" value={reason} onChange={(e) => setReason(e.target.value)} />
             </div>
           </div>
-          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }}>
-            Save return
+
+          {saleId && (
+            <div className="table-responsive">
+              <table className="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Batch</th>
+                    <th className="text-end">Sold qty</th>
+                    <th style={{ width: 110 }}>Return qty</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {draftItems.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="text-center text-muted py-3">
+                        All items removed — add the invoice again or close this form.
+                      </td>
+                    </tr>
+                  )}
+                  {draftItems.map((d) => (
+                    <tr key={d.saleItemId}>
+                      <td>
+                        {d.productName}
+                        <div className="text-muted small">{d.sku}</div>
+                      </td>
+                      <td>{d.batchNumber}</td>
+                      <td className="text-end">{d.soldQuantity}</td>
+                      <td>
+                        <input
+                          type="number"
+                          className="form-control form-control-sm"
+                          min={1}
+                          max={d.soldQuantity}
+                          value={d.quantity}
+                          onChange={(e) => updateDraftQuantity(d.saleItemId, Number(e.target.value))}
+                        />
+                      </td>
+                      <td>
+                        <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeDraftItem(d.saleItemId)}>
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <button type="submit" className="btn btn-primary mt-3" style={{ width: 160 }} disabled={createMutation.isPending || draftItems.length === 0}>
+            {createMutation.isPending ? "Saving..." : "Save return"}
           </button>
         </form>
       )}
