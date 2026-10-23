@@ -13,7 +13,6 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; module?: string; ac
   { to: "/inventory", label: "Inventory", module: "inventory", action: "view" },
   { to: "/expiry", label: "Expiry", module: "expiry", action: "view" },
   { to: "/reorder-suggestions", label: "Reorder Suggestions", module: "inventory", action: "view" },
-  { to: "/purchase-orders", label: "Purchase Orders", module: "purchase", action: "view" },
   { to: "/purchases", label: "Purchases", module: "purchase", action: "view" },
   { to: "/purchase-returns", label: "Purchase Returns", module: "purchase_return", action: "view" },
   { to: "/stock-transfers", label: "Stock Transfers", module: "stock_transfer", action: "view" },

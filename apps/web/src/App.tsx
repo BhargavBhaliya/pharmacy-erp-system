@@ -27,7 +27,6 @@ import { UsersPage } from "./pages/UsersPage";
 import { RolesPage } from "./pages/RolesPage";
 import { DoctorsPage } from "./pages/DoctorsPage";
 import { PrescriptionsPage } from "./pages/PrescriptionsPage";
-import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
 import { StockTransfersPage } from "./pages/StockTransfersPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
 import { BarcodeLabelsPage } from "./pages/BarcodeLabelsPage";
@@ -220,14 +219,6 @@ export function App() {
                   element={
                     <RequirePermission module="prescriptions" action="view">
                       <PrescriptionsPage />
-                    </RequirePermission>
-                  }
-                />
-                <Route
-                  path="/purchase-orders"
-                  element={
-                    <RequirePermission module="purchase" action="view">
-                      <PurchaseOrdersPage />
                     </RequirePermission>
                   }
                 />
