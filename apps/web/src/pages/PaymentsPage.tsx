@@ -8,21 +8,9 @@ interface Branch {
   id: string;
   name: string;
 }
-interface Customer {
-  id: string;
-  name: string;
-}
 interface Supplier {
   id: string;
   name: string;
-}
-interface Receipt {
-  id: string;
-  amount: string;
-  paymentMode: string;
-  createdAt: string;
-  customer: { name: string };
-  allocations: { sale: { invoiceNumber: string }; amount: string }[];
 }
 interface SupplierPayment {
   id: string;
@@ -36,7 +24,6 @@ interface SupplierPayment {
 export function PaymentsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"receipts" | "supplier">("receipts");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ branchId: "", partyId: "", amount: 0, paymentMode: "CASH" });
   const [error, setError] = useState<string | null>(null);
@@ -47,19 +34,9 @@ export function PaymentsPage() {
     queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
   });
 
-  const { data: customers = [] } = useQuery({
-    queryKey: ["customers"],
-    queryFn: async () => (await api.get<{ data: Customer[] }>("/customers")).data.data,
-  });
-
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers"],
     queryFn: async () => (await api.get<{ data: Supplier[] }>("/suppliers")).data.data,
-  });
-
-  const { data: receipts = [] } = useQuery({
-    queryKey: ["receipts"],
-    queryFn: async () => (await api.get<{ data: Receipt[] }>("/receipts")).data.data,
   });
 
   const { data: supplierPayments = [] } = useQuery({
@@ -68,9 +45,8 @@ export function PaymentsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload: { endpoint: string; body: Record<string, unknown> }) => api.post(payload.endpoint, payload.body),
+    mutationFn: (body: Record<string, unknown>) => api.post("/supplier-payments", body),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ["receipts"] });
       queryClient.invalidateQueries({ queryKey: ["supplier-payments"] });
       if (res.data.unallocatedAmount > 0) {
         setInfo(`₹${res.data.unallocatedAmount} could not be applied — no more outstanding invoices.`);
@@ -87,36 +63,21 @@ export function PaymentsPage() {
     e.preventDefault();
     setError(null);
     setInfo(null);
-    const endpoint = tab === "receipts" ? "/receipts" : "/supplier-payments";
-    const partyKey = tab === "receipts" ? "customerId" : "supplierId";
-    createMutation.mutate({ endpoint, body: { branchId: form.branchId, [partyKey]: form.partyId, amount: form.amount, paymentMode: form.paymentMode } });
+    createMutation.mutate({ branchId: form.branchId, supplierId: form.partyId, amount: form.amount, paymentMode: form.paymentMode });
   }
 
-  const parties = tab === "receipts" ? customers : suppliers;
-  const canAdd = hasPermission("payments", "add") || hasPermission("purchase", "edit");
+  const canAdd = hasPermission("purchase", "edit");
 
   return (
     <div>
-      <h3 className="mb-4">Payments</h3>
-      <ul className="nav nav-tabs mb-3">
-        <li className="nav-item">
-          <button className={`nav-link ${tab === "receipts" ? "active" : ""}`} onClick={() => setTab("receipts")}>
-            Customer Receipts
-          </button>
-        </li>
-        <li className="nav-item">
-          <button className={`nav-link ${tab === "supplier" ? "active" : ""}`} onClick={() => setTab("supplier")}>
-            Supplier Payments
-          </button>
-        </li>
-      </ul>
+      <h3 className="mb-4">Supplier Payments</h3>
 
       {error && <div className="alert alert-danger py-2">{error}</div>}
       {info && <div className="alert alert-info py-2">{info}</div>}
 
       {canAdd && (
         <button className="btn btn-primary mb-3" onClick={() => setShowForm((s) => !s)}>
-          {showForm ? "Cancel" : `New ${tab === "receipts" ? "receipt" : "payment"}`}
+          {showForm ? "Cancel" : "New payment"}
         </button>
       )}
 
@@ -135,10 +96,10 @@ export function PaymentsPage() {
               </select>
             </div>
             <div className="col-md-3">
-              <label className="form-label">{tab === "receipts" ? "Customer" : "Supplier"}</label>
+              <label className="form-label">Supplier</label>
               <select className="form-select" required value={form.partyId} onChange={(e) => setForm({ ...form, partyId: e.target.value })}>
                 <option value="">Select</option>
-                {parties.map((p) => (
+                {suppliers.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
@@ -167,57 +128,30 @@ export function PaymentsPage() {
         </form>
       )}
 
-      {tab === "receipts" ? (
-        <div className="card">
-          <table className="table mb-0">
-            <thead>
-              <tr>
-                <th>Customer</th>
-                <th>Amount</th>
-                <th>Applied to</th>
-                <th>Mode</th>
-                <th>Date</th>
+      <div className="card">
+        <table className="table mb-0">
+          <thead>
+            <tr>
+              <th>Supplier</th>
+              <th>Amount</th>
+              <th>Applied to</th>
+              <th>Mode</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {supplierPayments.map((p) => (
+              <tr key={p.id}>
+                <td>{p.supplier.name}</td>
+                <td>₹{p.amount}</td>
+                <td>{p.allocations.map((a) => `${a.purchase.referenceNumber} (₹${a.amount})`).join(", ") || "—"}</td>
+                <td>{p.paymentMode}</td>
+                <td>{new Date(p.createdAt).toLocaleDateString()}</td>
               </tr>
-            </thead>
-            <tbody>
-              {receipts.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.customer.name}</td>
-                  <td>₹{r.amount}</td>
-                  <td>{r.allocations.map((a) => `${a.sale.invoiceNumber} (₹${a.amount})`).join(", ") || "—"}</td>
-                  <td>{r.paymentMode}</td>
-                  <td>{new Date(r.createdAt).toLocaleDateString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="card">
-          <table className="table mb-0">
-            <thead>
-              <tr>
-                <th>Supplier</th>
-                <th>Amount</th>
-                <th>Applied to</th>
-                <th>Mode</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {supplierPayments.map((p) => (
-                <tr key={p.id}>
-                  <td>{p.supplier.name}</td>
-                  <td>₹{p.amount}</td>
-                  <td>{p.allocations.map((a) => `${a.purchase.referenceNumber} (₹${a.amount})`).join(", ") || "—"}</td>
-                  <td>{p.paymentMode}</td>
-                  <td>{new Date(p.createdAt).toLocaleDateString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
