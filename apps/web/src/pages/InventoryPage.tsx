@@ -45,7 +45,9 @@ export function InventoryPage() {
   const [branchId, setBranchId] = useState("");
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [batchForm, setBatchForm] = useState(emptyBatchForm);
+  const [productSearch, setProductSearch] = useState("");
   const [adjustForm, setAdjustForm] = useState<typeof emptyAdjustForm | null>(null);
+  const [batchSearch, setBatchSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const { data: branches = [] } = useQuery({
@@ -82,6 +84,18 @@ export function InventoryPage() {
   const batches = batchesQuery.data ?? [];
   const loading = stockQuery.isLoading || batchesQuery.isLoading;
 
+  const filteredProducts = products.filter((p) => {
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return true;
+    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+  });
+
+  const filteredBatches = batches.filter((b) => {
+    const q = batchSearch.trim().toLowerCase();
+    if (!q) return true;
+    return b.product.name.toLowerCase().includes(q) || b.batchNumber.toLowerCase().includes(q);
+  });
+
   function invalidateInventory() {
     queryClient.invalidateQueries({ queryKey: ["inventory", "stock"] });
     queryClient.invalidateQueries({ queryKey: ["batches"] });
@@ -93,6 +107,7 @@ export function InventoryPage() {
       invalidateInventory();
       setShowBatchForm(false);
       setBatchForm(emptyBatchForm);
+      setProductSearch("");
       setError(null);
     },
     onError: (err) => {
@@ -105,6 +120,7 @@ export function InventoryPage() {
     onSuccess: () => {
       invalidateInventory();
       setAdjustForm(null);
+      setBatchSearch("");
       setError(null);
     },
     onError: (err) => {
@@ -136,7 +152,13 @@ export function InventoryPage() {
             ))}
           </select>
           {hasPermission("batches", "add") && (
-            <button className="btn btn-primary" onClick={() => setShowBatchForm((s) => !s)}>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setShowBatchForm((s) => !s);
+                setProductSearch("");
+              }}
+            >
               {showBatchForm ? "Cancel" : "New batch"}
             </button>
           )}
@@ -150,9 +172,15 @@ export function InventoryPage() {
           <div className="row g-3">
             <div className="col-md-4">
               <label className="form-label">Product</label>
+              <input
+                className="form-control form-control-sm mb-1"
+                placeholder="Search name or SKU..."
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+              />
               <select className="form-select" required value={batchForm.productId} onChange={(e) => setBatchForm({ ...batchForm, productId: e.target.value })}>
                 <option value="">Select product</option>
-                {products.map((p) => (
+                {filteredProducts.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.sku})
                   </option>
@@ -192,9 +220,15 @@ export function InventoryPage() {
           <div className="row g-3">
             <div className="col-md-3">
               <label className="form-label">Batch</label>
+              <input
+                className="form-control form-control-sm mb-1"
+                placeholder="Search product or batch..."
+                value={batchSearch}
+                onChange={(e) => setBatchSearch(e.target.value)}
+              />
               <select className="form-select" required value={adjustForm.batchId} onChange={(e) => setAdjustForm({ ...adjustForm, batchId: e.target.value })}>
                 <option value="">Select batch</option>
-                {batches.map((b) => (
+                {filteredBatches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.product.name} — {b.batchNumber} (qty {b.quantity})
                   </option>
