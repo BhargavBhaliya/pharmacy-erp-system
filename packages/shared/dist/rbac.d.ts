@@ -1,0 +1,10 @@
+export declare const PERMISSION_MODULES: readonly ["dashboard", "pos", "sales", "sales_return", "purchase", "purchase_return", "products", "batches", "inventory", "stock_transfer", "expiry", "customers", "doctors", "suppliers", "prescriptions", "expenses", "payments", "accounting", "reports", "branches", "users", "roles", "notifications", "settings", "audit_logs"];
+export type PermissionModule = (typeof PERMISSION_MODULES)[number];
+export declare const PERMISSION_ACTIONS: readonly ["view", "add", "edit", "delete", "approve", "cancel", "export", "print", "discount", "refund", "stock_adjustment"];
+export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
+export declare const MODULE_ACTIONS: Record<PermissionModule, PermissionAction[]>;
+export declare const DEFAULT_ROLES: readonly ["Super Admin", "Business Owner", "Branch Manager", "Pharmacist", "Sales Executive", "Billing/Cashier", "Purchase Manager", "Inventory Manager", "Accountant", "Store Manager", "Delivery Staff", "Auditor"];
+export type DefaultRoleName = (typeof DEFAULT_ROLES)[number];
+export declare const DEFAULT_DISCOUNT_LIMIT_PERCENT: Partial<Record<DefaultRoleName, number>>;
+export declare const DEFAULT_ROLE_PERMISSION_GRANTS: Record<DefaultRoleName, string[]>;
+export declare function expandPermissionGrants(grants: string[]): string[];
