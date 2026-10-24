@@ -17,12 +17,14 @@ function daysAgo(n: number): Date {
 }
 
 async function main() {
-  const tenant = await prisma.tenant.findFirst({ where: { businessName: "Demo Medical Store" } });
-  if (!tenant) {
+  const foundTenant = await prisma.tenant.findFirst({ where: { businessName: "Demo Medical Store" } });
+  if (!foundTenant) {
     console.error("Demo Medical Store tenant not found — run `npx tsx prisma/seed.ts` first.");
     process.exitCode = 1;
     return;
   }
+  // Re-bound as a plain const so nested function declarations below see it as non-null.
+  const tenant = foundTenant;
 
   const already = await prisma.product.findFirst({ where: { tenantId: tenant.id, sku: MARKER_SKU } });
   if (already) {

@@ -96,6 +96,11 @@ if (!fs.existsSync(apiEntry)) {
     } catch (err) {
       console.error("Demo seed failed:", err.message);
     }
+    try {
+      run("Seeding extra demo data", path.join(__dirname, "apps/api/dist/prisma/seed-extra.js"), [], ".");
+    } catch (err) {
+      console.error("Extra demo seed failed:", err.message);
+    }
   }
   require(apiEntry);
 }
