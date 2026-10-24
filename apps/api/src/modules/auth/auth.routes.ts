@@ -10,10 +10,13 @@ import { env } from "../../config/env";
 export const authRouter = Router();
 
 const REFRESH_COOKIE = "refresh_token";
+// Frontend and backend deploy to separate subdomains in production (no shared origin for the
+// dev proxy to paper over), so the refresh cookie needs SameSite=None there to be sent at all on
+// cross-origin requests; locally (and for same-origin prod setups) Lax is the safer default.
 const cookieOptions = {
   httpOnly: true,
   secure: env.NODE_ENV === "production",
-  sameSite: "lax" as const,
+  sameSite: (env.NODE_ENV === "production" ? "none" : "lax") as "none" | "lax",
   path: "/api/auth",
 };
 

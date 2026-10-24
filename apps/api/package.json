@@ -5,6 +5,7 @@
   "main": "dist/src/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "postinstall": "prisma generate",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/server.js",
     "test": "vitest run",

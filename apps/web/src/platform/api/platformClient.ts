@@ -15,7 +15,10 @@ export function setPlatformUnauthorizedHandler(handler: () => void): void {
   onUnauthorized = handler;
 }
 
-export const platformApi = axios.create({ baseURL: "/api/platform", withCredentials: true });
+// See apps/web/src/api/client.ts's comment — same VITE_API_URL override for production.
+const API_BASE_URL = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api/platform` : "/api/platform";
+
+export const platformApi = axios.create({ baseURL: API_BASE_URL, withCredentials: true });
 
 platformApi.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (accessToken) {
@@ -27,7 +30,7 @@ platformApi.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 let refreshPromise: Promise<string> | null = null;
 
 async function refreshPlatformAccessToken(): Promise<string> {
-  const res = await axios.post<{ accessToken: string }>("/api/platform/auth/refresh", null, { withCredentials: true });
+  const res = await axios.post<{ accessToken: string }>(`${API_BASE_URL}/auth/refresh`, null, { withCredentials: true });
   accessToken = res.data.accessToken;
   return accessToken;
 }

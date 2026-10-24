@@ -23,10 +23,11 @@ import * as platformService from "./platform.service";
 export const platformRouter = Router();
 
 const REFRESH_COOKIE = "platform_refresh_token";
+// See auth.routes.ts's cookieOptions comment — same cross-origin reasoning applies here.
 const cookieOptions = {
   httpOnly: true,
   secure: env.NODE_ENV === "production",
-  sameSite: "lax" as const,
+  sameSite: (env.NODE_ENV === "production" ? "none" : "lax") as "none" | "lax",
   path: "/api/platform/auth",
 };
 

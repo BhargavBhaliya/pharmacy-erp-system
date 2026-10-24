@@ -14,10 +14,11 @@ import { consumeExchangeCode } from "./impersonation-store";
 export const platformExchangeRouter = Router();
 
 const REFRESH_COOKIE = "refresh_token";
+// See auth.routes.ts's cookieOptions comment — same cross-origin reasoning applies here.
 const cookieOptions = {
   httpOnly: true,
   secure: env.NODE_ENV === "production",
-  sameSite: "lax" as const,
+  sameSite: (env.NODE_ENV === "production" ? "none" : "lax") as "none" | "lax",
   path: "/api/auth",
 };
 

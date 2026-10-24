@@ -11,7 +11,13 @@ export function setUnauthorizedHandler(handler: () => void): void {
   onUnauthorized = handler;
 }
 
-export const api = axios.create({ baseURL: "/api", withCredentials: true });
+// Locally, Vite's dev-server proxy forwards the relative "/api" path to the backend (see
+// vite.config.ts), so nothing needs to be set. In production the frontend and backend are
+// typically separate deployments (different origins), so VITE_API_URL points this at the
+// backend's own URL instead.
+const API_BASE_URL = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "/api";
+
+export const api = axios.create({ baseURL: API_BASE_URL, withCredentials: true });
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (accessToken) {
@@ -23,7 +29,7 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 let refreshPromise: Promise<string> | null = null;
 
 async function refreshAccessToken(): Promise<string> {
-  const res = await axios.post<{ accessToken: string }>("/api/auth/refresh", null, { withCredentials: true });
+  const res = await axios.post<{ accessToken: string }>(`${API_BASE_URL}/auth/refresh`, null, { withCredentials: true });
   accessToken = res.data.accessToken;
   return accessToken;
 }
