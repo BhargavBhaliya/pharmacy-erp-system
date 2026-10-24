@@ -2,7 +2,7 @@
 // Express preset). That host runs no build step and has no npm/npx on PATH, so this builds on
 // first start by invoking the installed tools directly with the running node binary, applies
 // pending database migrations, then starts the API, which also serves the built web app.
-const { execFileSync } = require("child_process");
+const { spawnSync } = require("child_process");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
@@ -13,7 +13,18 @@ const bin = (p) => path.join(__dirname, "node_modules", p);
 
 function run(label, script, args, cwd) {
   console.log(`${label}...`);
-  execFileSync(process.execPath, [script, ...args], { cwd: path.join(__dirname, cwd), stdio: "inherit" });
+  const result = spawnSync(process.execPath, [script, ...args], {
+    cwd: path.join(__dirname, cwd),
+    encoding: "utf8",
+    maxBuffer: 50 * 1024 * 1024,
+  });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.status !== 0) {
+    const output = `${result.stdout || ""}${result.stderr || ""}`.slice(-3000);
+    throw new Error(`${label} failed (exit ${result.status}, signal ${result.signal}, ${result.error || "no spawn error"})
+${output}`);
+  }
 }
 
 function list(dir) {
