@@ -88,5 +88,14 @@ if (!fs.existsSync(apiEntry)) {
     // Keep the server up so /health can report the database problem instead of the app vanishing.
     console.error("Database migration failed:", err.message);
   }
+  // Optional: set SEED_DEMO=true to load the demo tenant and its demo logins (safe to leave on;
+  // the seed skips itself once the demo tenant exists).
+  if (process.env.SEED_DEMO === "true") {
+    try {
+      run("Seeding demo data", path.join(__dirname, "apps/api/dist/prisma/seed.js"), [], ".");
+    } catch (err) {
+      console.error("Demo seed failed:", err.message);
+    }
+  }
   require(apiEntry);
 }
