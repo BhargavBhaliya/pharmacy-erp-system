@@ -16,6 +16,19 @@ function list(dir) {
   }
 }
 
+// This host doesn't run a build step for the Express preset, so build on first start.
+if (!fs.existsSync(apiEntry)) {
+  for (const workspace of ["packages/shared", "apps/api", "apps/web"]) {
+    try {
+      console.log(`Building ${workspace}...`);
+      execSync(`npm run build --workspace=${workspace}`, { cwd: __dirname, stdio: "inherit" });
+    } catch (err) {
+      console.error(`Build of ${workspace} failed:`, err.message);
+      break;
+    }
+  }
+}
+
 if (!fs.existsSync(apiEntry)) {
   // The build output didn't make it to where the host runs the app. Serve a diagnostic page so
   // the deployed layout can be inspected from a browser instead of crashing silently.
