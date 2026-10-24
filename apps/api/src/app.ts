@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -107,6 +109,19 @@ app.use("/api/reports", reportsRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/platform", platformRouter);
+
+// Single-deployment mode: when the web app has been built (apps/web/dist), serve it from this
+// same server so the frontend's relative "/api" calls hit the API on the same origin. Skipped
+// when the build isn't there (local dev uses Vite's own server instead).
+const WEB_DIST = [path.resolve(__dirname, "../../web/dist"), path.resolve(__dirname, "../../../web/dist")].find((p) =>
+  fs.existsSync(path.join(p, "index.html"))
+);
+if (WEB_DIST) {
+  app.use(express.static(WEB_DIST));
+  app.get(/^\/(?!api\/|uploads\/|health$).*/, (_req, res) => {
+    res.sendFile(path.join(WEB_DIST, "index.html"));
+  });
+}
 
 app.use(notFoundHandler);
 app.use(errorHandler);
