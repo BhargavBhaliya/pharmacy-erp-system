@@ -38,6 +38,9 @@ interface ReturnDraft {
   unitRate: number;
 }
 
+// Stable reference: a fresh `[]` default on every render would re-trigger the effect below forever.
+const NO_ITEMS: PurchaseItem[] = [];
+
 export function PurchaseReturnsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -57,7 +60,7 @@ export function PurchaseReturnsPage() {
     queryFn: async () => (await api.get<{ data: ReturnRow[] }>("/purchase-returns")).data.data,
   });
 
-  const { data: purchaseItems = [] } = useQuery({
+  const { data: purchaseItems = NO_ITEMS } = useQuery({
     queryKey: ["purchase-items", purchaseId],
     queryFn: async () => (await api.get(`/purchases/${purchaseId}`)).data.data.items as PurchaseItem[],
     enabled: !!purchaseId,
@@ -81,7 +84,8 @@ export function PurchaseReturnsPage() {
           }))
       );
     } else {
-      setDraftItems([]);
+      // Bail out when already empty so this doesn't schedule a pointless re-render.
+      setDraftItems((prev) => (prev.length === 0 ? prev : []));
     }
   }, [purchaseId, purchaseItems]);
 
