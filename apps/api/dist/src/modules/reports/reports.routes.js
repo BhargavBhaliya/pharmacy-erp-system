@@ -6,10 +6,25 @@ const zod_1 = require("zod");
 const prisma_1 = require("../../lib/prisma");
 const auth_1 = require("../../middleware/auth");
 const csv_1 = require("../../lib/csv");
+const errors_1 = require("../../lib/errors");
 exports.reportsRouter = (0, express_1.Router)();
 exports.reportsRouter.use(auth_1.authenticate);
+// These report queries aggregate in application code (not a DB-side groupBy) and have no other
+// cap, so an unrestricted date range on a tenant with years of history could pull an unbounded,
+// ever-growing result set into memory. This is a safety net, not a real pagination story — a
+// tenant big enough to hit it should narrow the date range or (longer-term) this should move to
+// prisma.groupBy()-based aggregation instead of loading full rows.
+const REPORT_ROW_CAP = 20_000;
+// A caller-supplied branchId must still be one of the user's own branches — without this check
+// a user restricted to one branch could pass any other branch's id in this same tenant and read
+// its sales/purchases/expenses/stock figures.
 function branchScope(req, branchId) {
-    return branchId ? branchId : { in: req.user.branchIds };
+    if (branchId) {
+        if (!req.user.branchIds.includes(branchId))
+            throw new errors_1.ForbiddenError("You do not have access to this branch");
+        return branchId;
+    }
+    return { in: req.user.branchIds };
 }
 function dateRange(fromStr, toStr) {
     const to = toStr ? new Date(toStr) : new Date();
@@ -48,6 +63,7 @@ exports.reportsRouter.get("/sales", (0, auth_1.requirePermission)("reports", "vi
         const sales = await prisma_1.prisma.sale.findMany({
             where: { tenantId: req.user.tenantId, branchId: branchScope(req, q.branchId), status: "CONFIRMED", saleDate: { gte: from, lte: to } },
             include: { items: { include: { product: { include: { category: true } } } }, customer: true, doctor: true },
+            take: REPORT_ROW_CAP,
         });
         const userIds = [...new Set(sales.map((s) => s.createdById).filter((id) => Boolean(id)))];
         const users = await prisma_1.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } });
@@ -123,6 +139,7 @@ exports.reportsRouter.get("/purchases", (0, auth_1.requirePermission)("reports",
         const purchases = await prisma_1.prisma.purchase.findMany({
             where: { tenantId: req.user.tenantId, branchId: branchScope(req, q.branchId), status: "CONFIRMED", purchaseDate: { gte: from, lte: to } },
             include: { items: { include: { product: true } }, supplier: true },
+            take: REPORT_ROW_CAP,
         });
         const buckets = new Map();
         const bump = (key, label, amount, quantity) => {
@@ -172,6 +189,7 @@ exports.reportsRouter.get("/expenses", (0, auth_1.requirePermission)("reports", 
                 expenseDate: { gte: from, lte: to },
             },
             include: { category: true, branch: { select: { id: true, name: true } } },
+            take: REPORT_ROW_CAP,
         });
         const buckets = new Map();
         const bump = (key, label, amount) => {

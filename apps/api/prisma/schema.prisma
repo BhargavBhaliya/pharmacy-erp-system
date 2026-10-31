@@ -786,7 +786,7 @@ model PurchaseOrder {
   purchases Purchase[]
 
   @@unique([tenantId, orderNumber])
-  @@index([tenantId, branchId])
+  @@index([tenantId, branchId, createdAt])
   @@map("purchase_orders")
 }
 
@@ -860,7 +860,8 @@ model Purchase {
   supplierPaymentAllocations SupplierPaymentAllocation[]
 
   @@unique([tenantId, referenceNumber])
-  @@index([tenantId, branchId])
+  @@index([tenantId, branchId, createdAt])
+  @@index([tenantId, branchId, purchaseDate])
   @@index([supplierId])
   @@map("purchases")
 }
@@ -929,7 +930,7 @@ model PurchaseReturn {
   items    PurchaseReturnItem[]
 
   @@unique([tenantId, referenceNumber])
-  @@index([tenantId, branchId])
+  @@index([tenantId, branchId, createdAt])
   @@map("purchase_returns")
 }
 
@@ -1008,6 +1009,7 @@ model Customer {
 
   @@index([tenantId])
   @@index([tenantId, mobile])
+  @@index([tenantId, name])
   @@map("customers")
 }
 
@@ -1031,7 +1033,7 @@ model Prescription {
   items    PrescriptionItem[]
   sales    Sale[]
 
-  @@index([tenantId, branchId])
+  @@index([tenantId, branchId, prescriptionDate])
   @@index([customerId])
   @@map("prescriptions")
 }
@@ -1101,7 +1103,8 @@ model Sale {
   receiptAllocations ReceiptAllocation[]
 
   @@unique([tenantId, invoiceNumber])
-  @@index([tenantId, branchId])
+  @@index([tenantId, branchId, createdAt])
+  @@index([tenantId, branchId, saleDate])
   @@index([customerId])
   @@map("sales")
 }
@@ -1177,7 +1180,7 @@ model SalesReturn {
   items    SalesReturnItem[]
 
   @@unique([tenantId, referenceNumber])
-  @@index([tenantId, branchId])
+  @@index([tenantId, branchId, createdAt])
   @@map("sales_returns")
 }
 
@@ -1246,7 +1249,7 @@ model Expense {
   branch   Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
   category ExpenseCategory @relation(fields: [categoryId], references: [id])
 
-  @@index([tenantId, branchId])
+  @@index([tenantId, branchId, createdAt])
   @@map("expenses")
 }
 
@@ -1271,7 +1274,7 @@ model Receipt {
   customer    Customer            @relation(fields: [customerId], references: [id])
   allocations ReceiptAllocation[]
 
-  @@index([tenantId, branchId])
+  @@index([tenantId, branchId, createdAt])
   @@map("receipts")
 }
 
@@ -1307,7 +1310,7 @@ model SupplierPayment {
   supplier    Supplier                    @relation(fields: [supplierId], references: [id])
   allocations SupplierPaymentAllocation[]
 
-  @@index([tenantId, branchId])
+  @@index([tenantId, branchId, createdAt])
   @@map("supplier_payments")
 }
 
@@ -1349,7 +1352,7 @@ model CashSession {
   branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
   counter Counter @relation(fields: [counterId], references: [id])
 
-  @@index([tenantId, branchId])
+  @@index([tenantId, branchId, openedAt])
   @@index([counterId, status])
   @@map("cash_sessions")
 }

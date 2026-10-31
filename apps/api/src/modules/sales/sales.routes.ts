@@ -47,6 +47,35 @@ salesRouter.get("/", requirePermission("sales", "view"), async (req, res, next) 
   }
 });
 
+// Dashboard figures (today's total, receivables) computed with DB-side aggregates rather than
+// paging through the (take: 200-capped) list above and summing in JS — that would silently
+// under-report once a tenant has more than 200 sales, since older unpaid invoices would fall
+// outside the page. Scoped to the caller's own branches regardless of branchId/date params.
+salesRouter.get("/summary", requirePermission("sales", "view"), async (req, res, next) => {
+  try {
+    const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
+    const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+    const tenantBranchScope = { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds }, status: { not: "CANCELLED" as const } };
+
+    const [periodAgg, outstandingAgg] = await Promise.all([
+      prisma.sale.aggregate({
+        where: { ...tenantBranchScope, ...(from || to ? { saleDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}) },
+        _sum: { totalAmount: true },
+      }),
+      prisma.sale.aggregate({ where: tenantBranchScope, _sum: { totalAmount: true, paidAmount: true } }),
+    ]);
+
+    res.json({
+      data: {
+        periodTotal: Number(periodAgg._sum.totalAmount ?? 0),
+        receivables: Number(outstandingAgg._sum.totalAmount ?? 0) - Number(outstandingAgg._sum.paidAmount ?? 0),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Lets the billing screen offer a manufacturer/batch choice when a product has stock from
 // more than one batch (e.g. two different manufacturers) instead of always auto-picking FEFO.
 salesRouter.get("/available-batches", requirePermission("pos", "add"), async (req, res, next) => {

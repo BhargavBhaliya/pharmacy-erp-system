@@ -44,6 +44,33 @@ exports.purchasesRouter.get("/", (0, auth_1.requirePermission)("purchase", "view
         next(err);
     }
 });
+// Dashboard figures (today's total, payables) computed with DB-side aggregates rather than
+// paging through the (take: 200-capped) list above and summing in JS — that would silently
+// under-report once a tenant has more than 200 purchases, since older unpaid bills would fall
+// outside the page. Scoped to the caller's own branches regardless of date params.
+exports.purchasesRouter.get("/summary", (0, auth_1.requirePermission)("purchase", "view"), async (req, res, next) => {
+    try {
+        const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
+        const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+        const tenantBranchScope = { tenantId: req.user.tenantId, branchId: { in: req.user.branchIds }, status: { not: "CANCELLED" } };
+        const [periodAgg, outstandingAgg] = await Promise.all([
+            prisma_1.prisma.purchase.aggregate({
+                where: { ...tenantBranchScope, ...(from || to ? { purchaseDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}) },
+                _sum: { totalAmount: true },
+            }),
+            prisma_1.prisma.purchase.aggregate({ where: tenantBranchScope, _sum: { totalAmount: true, paidAmount: true } }),
+        ]);
+        res.json({
+            data: {
+                periodTotal: Number(periodAgg._sum.totalAmount ?? 0),
+                payables: Number(outstandingAgg._sum.totalAmount ?? 0) - Number(outstandingAgg._sum.paidAmount ?? 0),
+            },
+        });
+    }
+    catch (err) {
+        next(err);
+    }
+});
 exports.purchasesRouter.get("/:id", (0, auth_1.requirePermission)("purchase", "view"), async (req, res, next) => {
     try {
         const purchase = await prisma_1.prisma.purchase.findFirst({ where: { id: req.params.id, tenantId: req.user.tenantId }, include: purchaseInclude });

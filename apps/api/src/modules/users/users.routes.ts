@@ -102,7 +102,9 @@ usersRouter.post("/", requirePermission("users", "add"), validateBody(createUser
 
 usersRouter.put("/:id", requirePermission("users", "edit"), validateBody(updateUserSchema), async (req, res, next) => {
   try {
-    const existing = await prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId, deletedAt: null } });
+    // select excludes passwordHash — this snapshot gets persisted verbatim as audit-log
+    // oldValue, which is readable by anyone with just the audit_logs.view permission.
+    const existing = await prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId, deletedAt: null }, select: userSummarySelect });
     if (!existing) throw new NotFoundError("User not found");
 
     const { branchIds, ...rest } = req.body as typeof req.body;
@@ -138,7 +140,8 @@ usersRouter.put("/:id", requirePermission("users", "edit"), validateBody(updateU
 
 usersRouter.delete("/:id", requirePermission("users", "delete"), async (req, res, next) => {
   try {
-    const existing = await prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId, deletedAt: null } });
+    // select excludes passwordHash — see the matching comment on PUT /:id above.
+    const existing = await prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId, deletedAt: null }, select: userSummarySelect });
     if (!existing) throw new NotFoundError("User not found");
     if (existing.id === req.user!.id) throw new ValidationError("You cannot delete your own account");
 

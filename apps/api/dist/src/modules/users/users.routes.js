@@ -97,7 +97,9 @@ exports.usersRouter.post("/", (0, auth_1.requirePermission)("users", "add"), (0,
 });
 exports.usersRouter.put("/:id", (0, auth_1.requirePermission)("users", "edit"), (0, validate_1.validateBody)(users_validation_1.updateUserSchema), async (req, res, next) => {
     try {
-        const existing = await prisma_1.prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user.tenantId, deletedAt: null } });
+        // select excludes passwordHash — this snapshot gets persisted verbatim as audit-log
+        // oldValue, which is readable by anyone with just the audit_logs.view permission.
+        const existing = await prisma_1.prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user.tenantId, deletedAt: null }, select: userSummarySelect });
         if (!existing)
             throw new errors_1.NotFoundError("User not found");
         const { branchIds, ...rest } = req.body;
@@ -132,7 +134,8 @@ exports.usersRouter.put("/:id", (0, auth_1.requirePermission)("users", "edit"), 
 });
 exports.usersRouter.delete("/:id", (0, auth_1.requirePermission)("users", "delete"), async (req, res, next) => {
     try {
-        const existing = await prisma_1.prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user.tenantId, deletedAt: null } });
+        // select excludes passwordHash — see the matching comment on PUT /:id above.
+        const existing = await prisma_1.prisma.user.findFirst({ where: { id: req.params.id, tenantId: req.user.tenantId, deletedAt: null }, select: userSummarySelect });
         if (!existing)
             throw new errors_1.NotFoundError("User not found");
         if (existing.id === req.user.id)

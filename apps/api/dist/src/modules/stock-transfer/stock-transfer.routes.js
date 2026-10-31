@@ -188,13 +188,24 @@ exports.stockTransferRouter.put("/:id/receive", (0, auth_1.requirePermission)("s
         if (transfer.status !== "DISPATCHED")
             throw new errors_1.ValidationError(`Cannot receive a transfer in status ${transfer.status}`);
         await prisma_1.prisma.$transaction(async (tx) => {
+            // Batch-fetch every source batch and every already-existing destination batch up front
+            // (two queries) instead of one findUniqueOrThrow + one findFirst per item — a transfer of
+            // N items previously issued 2N+ sequential reads inside this same transaction.
+            const sourceBatches = await tx.batch.findMany({ where: { id: { in: transfer.items.map((i) => i.batchId) } } });
+            const sourceBatchById = new Map(sourceBatches.map((b) => [b.id, b]));
+            const destKey = (productId, batchNumber) => `${productId}|${batchNumber}`;
+            const existingDestBatches = await tx.batch.findMany({
+                where: {
+                    branchId: transfer.toBranchId,
+                    OR: transfer.items.map((item) => ({ productId: item.productId, batchNumber: sourceBatchById.get(item.batchId).batchNumber })),
+                },
+            });
+            const destBatchByKey = new Map(existingDestBatches.map((b) => [destKey(b.productId, b.batchNumber), b]));
             for (const item of transfer.items) {
-                const sourceBatch = await tx.batch.findUniqueOrThrow({ where: { id: item.batchId } });
+                const sourceBatch = sourceBatchById.get(item.batchId);
                 // Find or create the matching batch in the destination branch (same product + batch
                 // number + expiry uniquely identifies "the same stock" per the @@unique on Batch).
-                let destBatch = await tx.batch.findFirst({
-                    where: { branchId: transfer.toBranchId, productId: item.productId, batchNumber: sourceBatch.batchNumber },
-                });
+                let destBatch = destBatchByKey.get(destKey(item.productId, sourceBatch.batchNumber));
                 if (!destBatch) {
                     destBatch = await tx.batch.create({
                         data: {
@@ -212,6 +223,7 @@ exports.stockTransferRouter.put("/:id/receive", (0, auth_1.requirePermission)("s
                             quantity: 0,
                         },
                     });
+                    destBatchByKey.set(destKey(item.productId, sourceBatch.batchNumber), destBatch);
                 }
                 await (0, inventory_1.adjustStock)(tx, {
                     tenantId: req.user.tenantId,

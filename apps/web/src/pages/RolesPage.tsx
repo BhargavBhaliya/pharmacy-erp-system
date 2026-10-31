@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 
 interface Permission {
   id: string;
@@ -19,6 +20,7 @@ interface RoleRow {
 
 export function RolesPage() {
   const queryClient = useQueryClient();
+  const { refreshProfile } = useAuth();
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [draftCodes, setDraftCodes] = useState<Set<string>>(new Set());
 
@@ -37,6 +39,10 @@ export function RolesPage() {
       api.put(`/roles/${roleId}/permissions`, { permissionCodes }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["roles"] });
+      // The edited role might be the logged-in user's own — without this, the sidebar and every
+      // RequirePermission guard keep using the stale permission snapshot from login until the
+      // user manually logs out and back in, which looks like the save silently did nothing.
+      refreshProfile();
     },
   });
 
@@ -62,6 +68,14 @@ export function RolesPage() {
   }
 
   const selectedRole = roles.find((r) => r.id === selectedRoleId);
+
+  // Resyncs the checkbox draft to the server's authoritative permissionCodes after a save
+  // refetches ["roles"] — otherwise the draft would keep showing what was requested even if the
+  // server ever normalized/rejected part of it, instead of what's actually saved.
+  useEffect(() => {
+    if (selectedRole) setDraftCodes(new Set(selectedRole.permissionCodes));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRole?.permissionCodes]);
 
   return (
     <div>

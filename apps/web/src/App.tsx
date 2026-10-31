@@ -172,8 +172,22 @@ export function App() {
                     </RequirePermission>
                   }
                 />
-                <Route path="/payments" element={<PaymentsPage />} />
-                <Route path="/cash-sessions" element={<CashSessionsPage />} />
+                <Route
+                  path="/payments"
+                  element={
+                    <RequirePermission module="payments" action="view">
+                      <PaymentsPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/cash-sessions"
+                  element={
+                    <RequirePermission module="pos" action="view">
+                      <CashSessionsPage />
+                    </RequirePermission>
+                  }
+                />
                 <Route
                   path="/reports"
                   element={

@@ -2,19 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { api } from "../api/client";
-
-interface MoneyDoc {
-  status?: string;
-  totalAmount: string;
-  paidAmount: string;
-  createdAt: string;
-}
-
-function isToday(iso: string): boolean {
-  const d = new Date(iso);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-}
+import { computeDateRange } from "../lib/dateRangeFilter";
 
 // Dashboard figures change as the day goes on (new sales, stock moving toward expiry), so this
 // polls in the background rather than only loading once on mount.
@@ -47,15 +35,18 @@ export function DashboardPage() {
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
+  // Computed server-side via DB aggregates (see /sales/summary, /purchases/summary) rather than
+  // paging through the sales/purchases list and summing in JS — that approach silently
+  // under-reported receivables/payables once a tenant had more than 200 documents, since older
+  // unpaid invoices fell outside the capped page.
   const salesQuery = useQuery({
     queryKey: ["dashboard", "sales"],
     queryFn: async () => {
-      const res = await api.get<{ data: MoneyDoc[] }>("/sales");
-      const confirmed = res.data.data.filter((s) => s.status !== "CANCELLED");
-      return {
-        salesToday: confirmed.filter((s) => isToday(s.createdAt)).reduce((sum, s) => sum + Number(s.totalAmount), 0),
-        receivables: confirmed.reduce((sum, s) => sum + (Number(s.totalAmount) - Number(s.paidAmount)), 0),
-      };
+      const { from, to } = computeDateRange({ mode: "today", day: "", month: "", year: "" });
+      const res = await api.get<{ data: { periodTotal: number; receivables: number } }>("/sales/summary", {
+        params: { from: from?.toISOString(), to: to?.toISOString() },
+      });
+      return { salesToday: res.data.data.periodTotal, receivables: res.data.data.receivables };
     },
     enabled: canViewSales,
     refetchInterval: REFRESH_INTERVAL_MS,
@@ -64,11 +55,11 @@ export function DashboardPage() {
   const purchaseQuery = useQuery({
     queryKey: ["dashboard", "purchases"],
     queryFn: async () => {
-      const res = await api.get<{ data: MoneyDoc[] }>("/purchases");
-      return {
-        purchaseToday: res.data.data.filter((p) => isToday(p.createdAt)).reduce((sum, p) => sum + Number(p.totalAmount), 0),
-        payables: res.data.data.reduce((sum, p) => sum + (Number(p.totalAmount) - Number(p.paidAmount)), 0),
-      };
+      const { from, to } = computeDateRange({ mode: "today", day: "", month: "", year: "" });
+      const res = await api.get<{ data: { periodTotal: number; payables: number } }>("/purchases/summary", {
+        params: { from: from?.toISOString(), to: to?.toISOString() },
+      });
+      return { purchaseToday: res.data.data.periodTotal, payables: res.data.data.payables };
     },
     enabled: canViewPurchase,
     refetchInterval: REFRESH_INTERVAL_MS,
@@ -90,8 +81,7 @@ export function DashboardPage() {
     <div>
       <h3 className="mb-4">Dashboard</h3>
       <div className="alert alert-info">
-        Welcome, {user?.name}. Figures above cover the last 200 recent documents per module — full ledger-based
-        accounting reports (with date-range filters) land in a later phase.
+        Welcome, {user?.name}. Full ledger-based accounting reports (with date-range filters) land in a later phase.
       </div>
       <div className="row g-3">
         {cards.map((c) => {
