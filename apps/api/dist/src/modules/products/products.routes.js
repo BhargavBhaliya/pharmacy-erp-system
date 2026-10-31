@@ -16,6 +16,15 @@ const productInclude = {
     unit: { select: { id: true, name: true, shortCode: true } },
     barcodes: { select: { id: true, barcode: true } },
 };
+// The list/search endpoint (ProductsPage, POS/Inventory search, BarcodeLabelsPage) only ever
+// reads manufacturer and barcodes — category and unit are shown nowhere outside the single-
+// product edit form. On a remote DB (every relation is its own round trip, ~60-90ms each here)
+// that's 2 unused round trips on every search-as-you-type keystroke, which is the heaviest-hit
+// endpoint in the app. Full `productInclude` stays for GET /:id.
+const productListInclude = {
+    manufacturer: { select: { id: true, name: true } },
+    barcodes: { select: { id: true, barcode: true } },
+};
 exports.productsRouter.get("/", (0, auth_1.requirePermission)("products", "view"), async (req, res, next) => {
     try {
         const q = products_validation_1.productQuerySchema.parse(req.query);
@@ -40,7 +49,7 @@ exports.productsRouter.get("/", (0, auth_1.requirePermission)("products", "view"
             prisma_1.prisma.product.count({ where }),
             prisma_1.prisma.product.findMany({
                 where,
-                include: productInclude,
+                include: productListInclude,
                 orderBy: { name: "asc" },
                 skip: (q.page - 1) * q.pageSize,
                 take: q.pageSize,

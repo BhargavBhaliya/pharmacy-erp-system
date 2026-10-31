@@ -19,6 +19,14 @@ const purchaseInclude = {
     items: { include: { product: { select: { id: true, name: true, sku: true } }, batch: { select: { id: true, batchNumber: true } } } },
     payments: true,
 };
+// The list view (PurchasesPage.tsx) and every other page sharing this ["purchases"] query key
+// (PurchaseReturnsPage, PaymentsPage) only ever read supplier.name plus scalar fields — never
+// branch, items, or payments. On a remote DB (every relation is its own round trip, ~60-90ms
+// each here), that's 3 unused round trips on every list load. Full `purchaseInclude` stays for
+// the single-purchase detail view and after recording a purchase/payment.
+const purchaseListInclude = {
+    supplier: { select: { id: true, name: true } },
+};
 function assertBranchAccessible(req, branchId) {
     if (!req.user.branchIds.includes(branchId))
         throw new errors_1.ForbiddenError("You do not have access to this branch");
@@ -34,7 +42,7 @@ exports.purchasesRouter.get("/", (0, auth_1.requirePermission)("purchase", "view
     try {
         const purchases = await prisma_1.prisma.purchase.findMany({
             where: { tenantId: req.user.tenantId, branchId: { in: req.user.branchIds } },
-            include: purchaseInclude,
+            include: purchaseListInclude,
             orderBy: { createdAt: "desc" },
             take: 200,
         });

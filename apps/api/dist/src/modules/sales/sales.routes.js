@@ -21,6 +21,15 @@ const saleInclude = {
     items: { include: { product: { select: { id: true, name: true, sku: true, hsnCode: true } }, batch: { select: { id: true, batchNumber: true, expiryDate: true } } } },
     payments: true,
 };
+// The list view only ever renders invoiceNumber/customer/branch/totals (see SalesPage.tsx) —
+// never items, payments, or doctor. On a remote DB (every relation Prisma loads is its own
+// round trip, ~60-90ms each here), fetching those 3 unused relations on every list load was
+// most of why this page felt slow. Full `saleInclude` stays for the single-sale detail/print
+// view and the checkout response, which do need the item/payment breakdown.
+const saleListInclude = {
+    customer: { select: { id: true, name: true, mobile: true } },
+    branch: { select: { id: true, name: true } },
+};
 function assertBranchAccessible(req, branchId) {
     if (!req.user.branchIds.includes(branchId))
         throw new errors_1.ForbiddenError("You do not have access to this branch");
@@ -37,7 +46,7 @@ exports.salesRouter.get("/", (0, auth_1.requirePermission)("sales", "view"), asy
                 ...(customerId ? { customerId } : {}),
                 ...(from || to ? { saleDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
             },
-            include: saleInclude,
+            include: saleListInclude,
             orderBy: { createdAt: "desc" },
             take: 200,
         });
