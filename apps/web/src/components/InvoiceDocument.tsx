@@ -41,25 +41,19 @@ export interface InvoiceSaleDetail {
   payments: { amount: string; paymentMode: string }[];
 }
 
-// The invoice's visual layout, shared between the print page and the hidden off-screen render
-// used to capture a shareable image (see POSPage's "Share on WhatsApp") — one definition so the
-// two never drift apart.
-export function InvoiceDocument({
-  sale,
-  branding,
-  forImageCapture = false,
-}: {
+export interface InvoiceDocumentProps {
   sale: InvoiceSaleDetail;
   branding: InvoiceBranding;
-  // Only the off-screen html2canvas render needs this: it makes the browser fetch logo/signature
-  // in CORS mode so html2canvas can read their pixels without the canvas becoming tainted (the
-  // API serves /uploads with matching CORS headers for exactly this). Left off by default for
-  // the plain print page — setting crossOrigin turns a same-origin-or-unrestricted image load
-  // into one that *requires* a correctly configured CORS_ORIGIN, which would otherwise make the
-  // print page's logo/signature silently fail to load under any CORS misconfiguration, instead
-  // of just working the way a plain <img> always has.
+  // Needed only for the off-screen html2canvas render (POSPage's "Share on WhatsApp"): makes
+  // logo/signature load in CORS mode so their pixels can be read without tainting the canvas.
+  // Left off for the plain print page, which has no such requirement and would otherwise break
+  // under a CORS misconfiguration that a plain <img> would have ignored.
   forImageCapture?: boolean;
-}) {
+}
+
+// The invoice's visual layout, shared between the print page and the hidden off-screen render
+// used to capture a shareable image — one definition so the two never drift apart.
+export function InvoiceDocument({ sale, branding, forImageCapture = false }: InvoiceDocumentProps) {
   const totalTax = Number(sale.taxAmount);
   const halfTax = totalTax / 2;
   const isTaxInvoice = sale.invoiceType === "TAX" || sale.invoiceType === "WHOLESALE";

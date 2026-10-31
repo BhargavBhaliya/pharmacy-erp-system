@@ -1183,7 +1183,7 @@ model SalesReturn {
   items    SalesReturnItem[]
 
   @@unique([tenantId, referenceNumber])
-  @@index([tenantId, branchId, createdAt])
+  @@index([tenantId, branchId, returnDate])
   @@map("sales_returns")
 }
 

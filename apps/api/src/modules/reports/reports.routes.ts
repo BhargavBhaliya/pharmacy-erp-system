@@ -29,6 +29,9 @@ function branchScope(req: import("express").Request, branchId?: string) {
 
 function dateRange(fromStr?: string, toStr?: string) {
   const to = parseDateParam(toStr, "to") ?? new Date();
+  // Order matters: the default `from` (30 days back) is computed from `to` before `to` gets
+  // pushed to end-of-day below — swapping these two lines would silently shift the default
+  // lookback's anchor by most of a day.
   const from = parseDateParam(fromStr, "from") ?? new Date(to.getTime() - 30 * 86_400_000);
   to.setHours(23, 59, 59, 999);
   return { from, to };

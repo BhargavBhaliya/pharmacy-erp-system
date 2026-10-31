@@ -35,7 +35,7 @@ exports.salesReturnRouter.get("/", (0, auth_1.requirePermission)("sales_return",
                 ...(from || to ? { returnDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
             },
             include: returnInclude,
-            orderBy: { createdAt: "desc" },
+            orderBy: { returnDate: "desc" },
             take: 200,
         });
         res.json({ data: returns });
