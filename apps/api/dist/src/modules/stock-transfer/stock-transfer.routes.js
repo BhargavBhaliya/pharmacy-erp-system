@@ -8,6 +8,7 @@ const validate_1 = require("../../middleware/validate");
 const errors_1 = require("../../lib/errors");
 const audit_1 = require("../../lib/audit");
 const inventory_1 = require("../../lib/inventory");
+const dateParam_1 = require("../../lib/dateParam");
 const stock_transfer_validation_1 = require("./stock-transfer.validation");
 exports.stockTransferRouter = (0, express_1.Router)();
 exports.stockTransferRouter.use(auth_1.authenticate);
@@ -23,8 +24,8 @@ function assertBranchAccessible(req, branchId) {
 exports.stockTransferRouter.get("/", (0, auth_1.requirePermission)("stock_transfer", "view"), async (req, res, next) => {
     try {
         const branchId = typeof req.query.branchId === "string" ? req.query.branchId : undefined;
-        const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-        const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+        const from = (0, dateParam_1.parseDateParam)(req.query.from, "from");
+        const to = (0, dateParam_1.parseDateParam)(req.query.to, "to");
         const transfers = await prisma_1.prisma.stockTransfer.findMany({
             where: {
                 tenantId: req.user.tenantId,

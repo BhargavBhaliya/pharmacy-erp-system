@@ -7,6 +7,7 @@ import { recordAudit } from "../../lib/audit";
 import { notify } from "../../lib/notify";
 import { getNextDocumentNumber } from "../../lib/documentNumber";
 import { adjustStock } from "../../lib/inventory";
+import { parseDateParam } from "../../lib/dateParam";
 import { createSalesReturnSchema } from "./sales-return.validation";
 
 export const salesReturnRouter = Router();
@@ -25,8 +26,8 @@ function assertBranchAccessible(req: import("express").Request, branchId: string
 
 salesReturnRouter.get("/", requirePermission("sales_return", "view"), async (req, res, next) => {
   try {
-    const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-    const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+    const from = parseDateParam(req.query.from, "from");
+    const to = parseDateParam(req.query.to, "to");
     const returns = await prisma.salesReturn.findMany({
       where: {
         tenantId: req.user!.tenantId,

@@ -7,6 +7,7 @@ const prisma_1 = require("../../lib/prisma");
 const auth_1 = require("../../middleware/auth");
 const csv_1 = require("../../lib/csv");
 const errors_1 = require("../../lib/errors");
+const dateParam_1 = require("../../lib/dateParam");
 exports.reportsRouter = (0, express_1.Router)();
 exports.reportsRouter.use(auth_1.authenticate);
 // These report queries aggregate in application code (not a DB-side groupBy) and have no other
@@ -27,8 +28,8 @@ function branchScope(req, branchId) {
     return { in: req.user.branchIds };
 }
 function dateRange(fromStr, toStr) {
-    const to = toStr ? new Date(toStr) : new Date();
-    const from = fromStr ? new Date(fromStr) : new Date(to.getTime() - 30 * 86_400_000);
+    const to = (0, dateParam_1.parseDateParam)(toStr, "to") ?? new Date();
+    const from = (0, dateParam_1.parseDateParam)(fromStr, "from") ?? new Date(to.getTime() - 30 * 86_400_000);
     to.setHours(23, 59, 59, 999);
     return { from, to };
 }

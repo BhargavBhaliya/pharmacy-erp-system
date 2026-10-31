@@ -5,6 +5,7 @@ import { validateBody } from "../../middleware/validate";
 import { ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
 import { notify } from "../../lib/notify";
+import { parseDateParam } from "../../lib/dateParam";
 import { createExpenseCategorySchema, createExpenseSchema } from "./expenses.validation";
 
 export const expenseCategoriesRouter = Router();
@@ -42,8 +43,8 @@ const expenseInclude = {
 
 expensesRouter.get("/", requirePermission("expenses", "view"), async (req, res, next) => {
   try {
-    const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-    const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+    const from = parseDateParam(req.query.from, "from");
+    const to = parseDateParam(req.query.to, "to");
     const expenses = await prisma.expense.findMany({
       where: {
         tenantId: req.user!.tenantId,

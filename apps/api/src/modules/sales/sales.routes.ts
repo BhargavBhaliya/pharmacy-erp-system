@@ -5,6 +5,7 @@ import { validateBody } from "../../middleware/validate";
 import { ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
 import { getNextDocumentNumber } from "../../lib/documentNumber";
+import { parseDateParam } from "../../lib/dateParam";
 import { adjustStock, allocateFefoQuantity, allocateSpecificBatch } from "../../lib/inventory";
 import { getCustomerOutstanding } from "../../lib/customerCredit";
 import { computeSaleLineTotals } from "./sales.calc";
@@ -38,8 +39,8 @@ function assertBranchAccessible(req: import("express").Request, branchId: string
 salesRouter.get("/", requirePermission("sales", "view"), async (req, res, next) => {
   try {
     const customerId = typeof req.query.customerId === "string" ? req.query.customerId : undefined;
-    const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-    const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+    const from = parseDateParam(req.query.from, "from");
+    const to = parseDateParam(req.query.to, "to");
     const sales = await prisma.sale.findMany({
       where: {
         tenantId: req.user!.tenantId,
@@ -63,8 +64,8 @@ salesRouter.get("/", requirePermission("sales", "view"), async (req, res, next) 
 // outside the page. Scoped to the caller's own branches regardless of branchId/date params.
 salesRouter.get("/summary", requirePermission("sales", "view"), async (req, res, next) => {
   try {
-    const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-    const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+    const from = parseDateParam(req.query.from, "from");
+    const to = parseDateParam(req.query.to, "to");
     const tenantBranchScope = { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds }, status: { not: "CANCELLED" as const } };
 
     const [periodAgg, outstandingAgg] = await Promise.all([

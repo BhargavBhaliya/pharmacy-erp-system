@@ -43,10 +43,23 @@ export interface InvoiceSaleDetail {
 
 // The invoice's visual layout, shared between the print page and the hidden off-screen render
 // used to capture a shareable image (see POSPage's "Share on WhatsApp") — one definition so the
-// two never drift apart. logo/signature <img> tags set crossOrigin so html2canvas can read their
-// pixels without the canvas becoming tainted (the API serves /uploads with CORS headers for
-// exactly this); it's a no-op for normal printing.
-export function InvoiceDocument({ sale, branding }: { sale: InvoiceSaleDetail; branding: InvoiceBranding }) {
+// two never drift apart.
+export function InvoiceDocument({
+  sale,
+  branding,
+  forImageCapture = false,
+}: {
+  sale: InvoiceSaleDetail;
+  branding: InvoiceBranding;
+  // Only the off-screen html2canvas render needs this: it makes the browser fetch logo/signature
+  // in CORS mode so html2canvas can read their pixels without the canvas becoming tainted (the
+  // API serves /uploads with matching CORS headers for exactly this). Left off by default for
+  // the plain print page — setting crossOrigin turns a same-origin-or-unrestricted image load
+  // into one that *requires* a correctly configured CORS_ORIGIN, which would otherwise make the
+  // print page's logo/signature silently fail to load under any CORS misconfiguration, instead
+  // of just working the way a plain <img> always has.
+  forImageCapture?: boolean;
+}) {
   const totalTax = Number(sale.taxAmount);
   const halfTax = totalTax / 2;
   const isTaxInvoice = sale.invoiceType === "TAX" || sale.invoiceType === "WHOLESALE";
@@ -56,7 +69,12 @@ export function InvoiceDocument({ sale, branding }: { sale: InvoiceSaleDetail; b
       <div className="d-flex justify-content-between align-items-start border-bottom pb-2 mb-2">
         <div className="d-flex align-items-start gap-3">
           {branding.logoUrl && (
-            <img src={branding.logoUrl} alt="" crossOrigin="anonymous" style={{ height: 56, width: 56, objectFit: "contain" }} />
+            <img
+              src={branding.logoUrl}
+              alt=""
+              crossOrigin={forImageCapture ? "anonymous" : undefined}
+              style={{ height: 56, width: 56, objectFit: "contain" }}
+            />
           )}
           <div>
             <h4 className="mb-0">{branding.businessName}</h4>
@@ -206,7 +224,12 @@ export function InvoiceDocument({ sale, branding }: { sale: InvoiceSaleDetail; b
         </div>
         <div className="text-center">
           {branding.signatureUrl ? (
-            <img src={branding.signatureUrl} alt="" crossOrigin="anonymous" style={{ height: 50, objectFit: "contain" }} />
+            <img
+              src={branding.signatureUrl}
+              alt=""
+              crossOrigin={forImageCapture ? "anonymous" : undefined}
+              style={{ height: 50, objectFit: "contain" }}
+            />
           ) : (
             <div style={{ height: 50 }} />
           )}

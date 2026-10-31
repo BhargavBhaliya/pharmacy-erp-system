@@ -28,7 +28,6 @@ interface Purchase {
   paidAmount: string;
   paymentStatus: string;
   supplier: { name: string };
-  branch: { name: string };
   createdAt: string;
 }
 

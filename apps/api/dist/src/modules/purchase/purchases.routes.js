@@ -9,6 +9,7 @@ const errors_1 = require("../../lib/errors");
 const audit_1 = require("../../lib/audit");
 const documentNumber_1 = require("../../lib/documentNumber");
 const inventory_1 = require("../../lib/inventory");
+const dateParam_1 = require("../../lib/dateParam");
 const purchase_calc_1 = require("./purchase.calc");
 const purchase_validation_1 = require("./purchase.validation");
 exports.purchasesRouter = (0, express_1.Router)();
@@ -58,8 +59,8 @@ exports.purchasesRouter.get("/", (0, auth_1.requirePermission)("purchase", "view
 // outside the page. Scoped to the caller's own branches regardless of date params.
 exports.purchasesRouter.get("/summary", (0, auth_1.requirePermission)("purchase", "view"), async (req, res, next) => {
     try {
-        const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-        const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+        const from = (0, dateParam_1.parseDateParam)(req.query.from, "from");
+        const to = (0, dateParam_1.parseDateParam)(req.query.to, "to");
         const tenantBranchScope = { tenantId: req.user.tenantId, branchId: { in: req.user.branchIds }, status: { not: "CANCELLED" } };
         const [periodAgg, outstandingAgg] = await Promise.all([
             prisma_1.prisma.purchase.aggregate({

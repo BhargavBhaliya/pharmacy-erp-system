@@ -5,6 +5,7 @@ import { validateBody } from "../../middleware/validate";
 import { ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
 import { adjustStock } from "../../lib/inventory";
+import { parseDateParam } from "../../lib/dateParam";
 import { createStockTransferSchema } from "./stock-transfer.validation";
 
 export const stockTransferRouter = Router();
@@ -23,8 +24,8 @@ function assertBranchAccessible(req: import("express").Request, branchId: string
 stockTransferRouter.get("/", requirePermission("stock_transfer", "view"), async (req, res, next) => {
   try {
     const branchId = typeof req.query.branchId === "string" ? req.query.branchId : undefined;
-    const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-    const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+    const from = parseDateParam(req.query.from, "from");
+    const to = parseDateParam(req.query.to, "to");
     const transfers = await prisma.stockTransfer.findMany({
       where: {
         tenantId: req.user!.tenantId,

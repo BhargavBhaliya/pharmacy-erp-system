@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 import { authenticate, requirePermission } from "../../middleware/auth";
 import { toCsv } from "../../lib/csv";
 import { ForbiddenError } from "../../lib/errors";
+import { parseDateParam } from "../../lib/dateParam";
 
 export const reportsRouter = Router();
 reportsRouter.use(authenticate);
@@ -27,8 +28,8 @@ function branchScope(req: import("express").Request, branchId?: string) {
 }
 
 function dateRange(fromStr?: string, toStr?: string) {
-  const to = toStr ? new Date(toStr) : new Date();
-  const from = fromStr ? new Date(fromStr) : new Date(to.getTime() - 30 * 86_400_000);
+  const to = parseDateParam(toStr, "to") ?? new Date();
+  const from = parseDateParam(fromStr, "from") ?? new Date(to.getTime() - 30 * 86_400_000);
   to.setHours(23, 59, 59, 999);
   return { from, to };
 }

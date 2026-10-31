@@ -25,7 +25,7 @@ interface ReturnRow {
   reason?: string | null;
   sale: { invoiceNumber: string };
   items: { id: string; quantity: number; product: { name: string } }[];
-  createdAt: string;
+  returnDate: string;
 }
 interface ReturnDraft {
   saleItemId: string;
@@ -303,7 +303,7 @@ export function SalesReturnsPage() {
                 </td>
                 <td>₹{r.totalAmount}</td>
                 <td>{statusBadge(r.status)}</td>
-                <td>{new Date(r.createdAt).toLocaleDateString()}</td>
+                <td>{new Date(r.returnDate).toLocaleDateString()}</td>
                 <td className="text-end">
                   {r.status === "PENDING" && hasPermission("sales_return", "approve") && (
                     <div className="btn-group">

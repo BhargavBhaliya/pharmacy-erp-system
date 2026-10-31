@@ -6,6 +6,7 @@ import { ForbiddenError, NotFoundError, ValidationError } from "../../lib/errors
 import { recordAudit } from "../../lib/audit";
 import { getNextDocumentNumber } from "../../lib/documentNumber";
 import { adjustStock } from "../../lib/inventory";
+import { parseDateParam } from "../../lib/dateParam";
 import { computePurchaseTotals } from "./purchase.calc";
 import { createPurchasePaymentSchema, createPurchaseSchema, type CreatePurchaseInput } from "./purchase.validation";
 
@@ -58,8 +59,8 @@ purchasesRouter.get("/", requirePermission("purchase", "view"), async (req, res,
 // outside the page. Scoped to the caller's own branches regardless of date params.
 purchasesRouter.get("/summary", requirePermission("purchase", "view"), async (req, res, next) => {
   try {
-    const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-    const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+    const from = parseDateParam(req.query.from, "from");
+    const to = parseDateParam(req.query.to, "to");
     const tenantBranchScope = { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds }, status: { not: "CANCELLED" as const } };
 
     const [periodAgg, outstandingAgg] = await Promise.all([

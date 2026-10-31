@@ -4,6 +4,7 @@ import { authenticate, requirePermission } from "../../middleware/auth";
 import { validateBody } from "../../middleware/validate";
 import { ForbiddenError, ValidationError } from "../../lib/errors";
 import { recordAudit } from "../../lib/audit";
+import { parseDateParam } from "../../lib/dateParam";
 import { createSupplierPaymentSchema } from "./supplier-payments.validation";
 
 export const supplierPaymentsRouter = Router();
@@ -20,8 +21,8 @@ const supplierPaymentInclude = {
 
 supplierPaymentsRouter.get("/", requirePermission("purchase", "view"), async (req, res, next) => {
   try {
-    const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-    const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+    const from = parseDateParam(req.query.from, "from");
+    const to = parseDateParam(req.query.to, "to");
     const payments = await prisma.supplierPayment.findMany({
       where: {
         tenantId: req.user!.tenantId,

@@ -10,6 +10,7 @@ const audit_1 = require("../../lib/audit");
 const notify_1 = require("../../lib/notify");
 const documentNumber_1 = require("../../lib/documentNumber");
 const inventory_1 = require("../../lib/inventory");
+const dateParam_1 = require("../../lib/dateParam");
 const sales_return_validation_1 = require("./sales-return.validation");
 exports.salesReturnRouter = (0, express_1.Router)();
 exports.salesReturnRouter.use(auth_1.authenticate);
@@ -25,8 +26,8 @@ function assertBranchAccessible(req, branchId) {
 }
 exports.salesReturnRouter.get("/", (0, auth_1.requirePermission)("sales_return", "view"), async (req, res, next) => {
     try {
-        const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-        const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+        const from = (0, dateParam_1.parseDateParam)(req.query.from, "from");
+        const to = (0, dateParam_1.parseDateParam)(req.query.to, "to");
         const returns = await prisma_1.prisma.salesReturn.findMany({
             where: {
                 tenantId: req.user.tenantId,

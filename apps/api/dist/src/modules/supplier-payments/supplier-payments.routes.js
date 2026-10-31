@@ -7,6 +7,7 @@ const auth_1 = require("../../middleware/auth");
 const validate_1 = require("../../middleware/validate");
 const errors_1 = require("../../lib/errors");
 const audit_1 = require("../../lib/audit");
+const dateParam_1 = require("../../lib/dateParam");
 const supplier_payments_validation_1 = require("./supplier-payments.validation");
 exports.supplierPaymentsRouter = (0, express_1.Router)();
 exports.supplierPaymentsRouter.use(auth_1.authenticate);
@@ -20,8 +21,8 @@ const supplierPaymentInclude = {
 };
 exports.supplierPaymentsRouter.get("/", (0, auth_1.requirePermission)("purchase", "view"), async (req, res, next) => {
     try {
-        const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-        const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+        const from = (0, dateParam_1.parseDateParam)(req.query.from, "from");
+        const to = (0, dateParam_1.parseDateParam)(req.query.to, "to");
         const payments = await prisma_1.prisma.supplierPayment.findMany({
             where: {
                 tenantId: req.user.tenantId,

@@ -8,6 +8,7 @@ const validate_1 = require("../../middleware/validate");
 const errors_1 = require("../../lib/errors");
 const audit_1 = require("../../lib/audit");
 const notify_1 = require("../../lib/notify");
+const dateParam_1 = require("../../lib/dateParam");
 const expenses_validation_1 = require("./expenses.validation");
 exports.expenseCategoriesRouter = (0, express_1.Router)();
 exports.expenseCategoriesRouter.use(auth_1.authenticate);
@@ -41,8 +42,8 @@ const expenseInclude = {
 };
 exports.expensesRouter.get("/", (0, auth_1.requirePermission)("expenses", "view"), async (req, res, next) => {
     try {
-        const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
-        const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
+        const from = (0, dateParam_1.parseDateParam)(req.query.from, "from");
+        const to = (0, dateParam_1.parseDateParam)(req.query.to, "to");
         const expenses = await prisma_1.prisma.expense.findMany({
             where: {
                 tenantId: req.user.tenantId,

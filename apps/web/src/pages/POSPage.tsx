@@ -883,7 +883,7 @@ export function POSPage() {
       {lastInvoice && branding && (
         <div style={{ position: "fixed", top: 0, left: -10_000, width: 850, background: "#fff" }}>
           <div ref={invoiceCaptureRef} className="p-4">
-            <InvoiceDocument sale={lastInvoice} branding={branding} />
+            <InvoiceDocument sale={lastInvoice} branding={branding} forImageCapture />
           </div>
         </div>
       )}
