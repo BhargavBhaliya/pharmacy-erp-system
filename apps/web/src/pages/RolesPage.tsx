@@ -74,13 +74,15 @@ export function RolesPage() {
               {roles.map((r) => (
                 <button
                   key={r.id}
-                  className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center ${
+                  className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2 ${
                     selectedRoleId === r.id ? "active" : ""
                   }`}
                   onClick={() => selectRole(r)}
                 >
-                  {r.name}
-                  <span className="badge text-bg-secondary">{r.userCount}</span>
+                  <span className="text-truncate" style={{ minWidth: 0 }}>
+                    {r.name}
+                  </span>
+                  <span className="badge text-bg-secondary flex-shrink-0">{r.userCount}</span>
                 </button>
               ))}
             </div>
