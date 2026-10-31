@@ -17,6 +17,7 @@ interface ProductLite {
   sellingPrice: string;
   mrp: string;
   gstRatePercent: string;
+  manufacturer?: { id: string; name: string } | null;
 }
 interface Customer {
   id: string;
@@ -485,6 +486,7 @@ export function POSPage() {
                     onClick={() => handleProductSelect(p)}
                   >
                     {p.name} <span className="text-muted small">({p.sku})</span>
+                    {p.manufacturer && <span className="badge text-bg-light border ms-1">{p.manufacturer.name}</span>}
                     <span className="float-end">₹{p.sellingPrice}</span>
                   </button>
                 ))}
