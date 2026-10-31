@@ -38,7 +38,7 @@ async function main() {
     const roleIdByName = await (0, tenantSetup_1.seedDefaultRolesForTenant)(tenant.id);
     const passwordHash = await (0, password_1.hashPassword)(DEMO_PASSWORD);
     const demoUsers = [
-        { name: "Demo Owner", email: "owner@demo-pharmacy.test", username: "owner", role: "Super Admin" },
+        { name: "Demo Owner", email: "owner@demo-pharmacy.test", username: "owner", role: "Business Owner" },
         { name: "Demo Manager", email: "manager@demo-pharmacy.test", username: "manager", role: "Branch Manager" },
         { name: "Demo Pharmacist", email: "pharmacist@demo-pharmacy.test", username: "pharmacist", role: "Pharmacist" },
         { name: "Demo Cashier", email: "cashier@demo-pharmacy.test", username: "cashier", role: "Billing/Cashier" },
@@ -51,7 +51,7 @@ async function main() {
         const user = await prisma_1.prisma.user.create({
             data: { tenantId: tenant.id, name: u.name, email: u.email, username: u.username, passwordHash, roleId, userBranches: { create: [{ branchId: branch.id }] } },
         });
-        if (u.role === "Super Admin")
+        if (u.role === "Business Owner")
             ownerUserId = user.id;
     }
     // --- Catalog ---------------------------------------------------------

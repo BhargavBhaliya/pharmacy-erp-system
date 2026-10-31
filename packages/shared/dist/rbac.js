@@ -75,7 +75,6 @@ exports.MODULE_ACTIONS = {
     audit_logs: ["view", "export"],
 };
 exports.DEFAULT_ROLES = [
-    "Super Admin",
     "Business Owner",
     "Branch Manager",
     "Pharmacist",
@@ -97,13 +96,11 @@ exports.DEFAULT_DISCOUNT_LIMIT_PERCENT = {
     "Branch Manager": 15,
     "Store Manager": 15,
     "Business Owner": 100,
-    "Super Admin": 100,
 };
 // Starting permission grants per default role. Entries are "module.action" or "module.*"
 // (expanded against MODULE_ACTIONS at seed time). These are editable afterwards by an admin
 // via the roles UI/API — this is only the day-one default, not a hardcoded restriction.
 exports.DEFAULT_ROLE_PERMISSION_GRANTS = {
-    "Super Admin": ["*.*"],
     "Business Owner": ["*.*"],
     "Branch Manager": [
         "dashboard.*", "pos.*", "sales.*", "sales_return.*", "purchase.*", "purchase_return.*",

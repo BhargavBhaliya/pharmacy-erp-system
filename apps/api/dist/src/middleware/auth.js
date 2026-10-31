@@ -7,7 +7,10 @@ const prisma_1 = require("../lib/prisma");
 const jwt_1 = require("../lib/jwt");
 const errors_1 = require("../lib/errors");
 // Roles that can see/operate across every branch in the tenant without an explicit
-// UserBranch row, per spec section 3 ("Owner/Admin can view all branches").
+// UserBranch row, per spec section 3 ("Owner/Admin can view all branches"). "Super Admin" is
+// no longer a seeded default (tenants now get just "Business Owner" as their top role — having
+// both was confusingly identical to this app's separate, cross-tenant Platform Super Admin),
+// but it stays listed here so tenants provisioned before that change keep full branch access.
 const TENANT_WIDE_ROLE_NAMES = new Set(["Super Admin", "Business Owner"]);
 async function authenticate(req, _res, next) {
     try {

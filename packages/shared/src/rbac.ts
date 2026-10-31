@@ -79,7 +79,6 @@ export const MODULE_ACTIONS: Record<PermissionModule, PermissionAction[]> = {
 };
 
 export const DEFAULT_ROLES = [
-  "Super Admin",
   "Business Owner",
   "Branch Manager",
   "Pharmacist",
@@ -104,14 +103,12 @@ export const DEFAULT_DISCOUNT_LIMIT_PERCENT: Partial<Record<DefaultRoleName, num
   "Branch Manager": 15,
   "Store Manager": 15,
   "Business Owner": 100,
-  "Super Admin": 100,
 };
 
 // Starting permission grants per default role. Entries are "module.action" or "module.*"
 // (expanded against MODULE_ACTIONS at seed time). These are editable afterwards by an admin
 // via the roles UI/API — this is only the day-one default, not a hardcoded restriction.
 export const DEFAULT_ROLE_PERMISSION_GRANTS: Record<DefaultRoleName, string[]> = {
-  "Super Admin": ["*.*"],
   "Business Owner": ["*.*"],
   "Branch Manager": [
     "dashboard.*", "pos.*", "sales.*", "sales_return.*", "purchase.*", "purchase_return.*",

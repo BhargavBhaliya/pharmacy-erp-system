@@ -3,7 +3,7 @@ export type PermissionModule = (typeof PERMISSION_MODULES)[number];
 export declare const PERMISSION_ACTIONS: readonly ["view", "add", "edit", "delete", "approve", "cancel", "export", "print", "discount", "refund", "stock_adjustment"];
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number];
 export declare const MODULE_ACTIONS: Record<PermissionModule, PermissionAction[]>;
-export declare const DEFAULT_ROLES: readonly ["Super Admin", "Business Owner", "Branch Manager", "Pharmacist", "Sales Executive", "Billing/Cashier", "Purchase Manager", "Inventory Manager", "Accountant", "Store Manager", "Delivery Staff", "Auditor"];
+export declare const DEFAULT_ROLES: readonly ["Business Owner", "Branch Manager", "Pharmacist", "Sales Executive", "Billing/Cashier", "Purchase Manager", "Inventory Manager", "Accountant", "Store Manager", "Delivery Staff", "Auditor"];
 export type DefaultRoleName = (typeof DEFAULT_ROLES)[number];
 export declare const DEFAULT_DISCOUNT_LIMIT_PERCENT: Partial<Record<DefaultRoleName, number>>;
 export declare const DEFAULT_ROLE_PERMISSION_GRANTS: Record<DefaultRoleName, string[]>;

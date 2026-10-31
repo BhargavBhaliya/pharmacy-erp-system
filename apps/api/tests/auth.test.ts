@@ -12,7 +12,7 @@ afterAll(async () => {
 });
 
 describe("auth", () => {
-  it("registers a new business with a Super Admin owner user and default roles", async () => {
+  it("registers a new business with a Business Owner user and default roles", async () => {
     const email = uniqueEmail("owner");
     const res = await request(app).post("/api/auth/register-business").send({
       businessName: "Test Pharmacy",
@@ -26,7 +26,7 @@ describe("auth", () => {
     createdTenantIds.push(res.body.tenant.id);
 
     const roles = await prisma.role.findMany({ where: { tenantId: res.body.tenant.id } });
-    expect(roles.length).toBe(12); // DEFAULT_ROLES
+    expect(roles.length).toBe(11); // DEFAULT_ROLES
   });
 
   it("rejects registering the same email twice", async () => {
@@ -67,7 +67,7 @@ describe("auth", () => {
     expect(goodLogin.body.user.email).toBe(email);
   });
 
-  it("returns profile with full permission set for Super Admin via /me", async () => {
+  it("returns profile with full permission set for the Business Owner via /me", async () => {
     const email = uniqueEmail("me");
     const reg = await request(app).post("/api/auth/register-business").send({
       businessName: "Me Pharmacy",

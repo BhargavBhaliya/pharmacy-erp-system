@@ -62,7 +62,7 @@ async function createStore(input) {
                 username,
                 phone: input.phone,
                 passwordHash,
-                roleId: roleIdByName.get("Super Admin"),
+                roleId: roleIdByName.get("Business Owner"),
             },
         });
         return { tenant, branch, user };

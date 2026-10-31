@@ -32,7 +32,7 @@ async function registerBusiness(input) {
         // Must run on `tx`, not the shared client: the tenant row isn't committed yet, so a
         // separate connection can't see it and role creation would fail its FK constraint.
         const roleIdByName = await (0, tenantSetup_1.seedDefaultRolesForTenant)(tenant.id, tx);
-        const superAdminRoleId = roleIdByName.get("Super Admin");
+        const ownerRoleId = roleIdByName.get("Business Owner");
         const user = await tx.user.create({
             data: {
                 tenantId: tenant.id,
@@ -41,7 +41,7 @@ async function registerBusiness(input) {
                 username,
                 phone: input.phone,
                 passwordHash,
-                roleId: superAdminRoleId,
+                roleId: ownerRoleId,
             },
         });
         return { tenant, branch, user };

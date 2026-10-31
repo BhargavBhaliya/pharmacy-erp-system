@@ -54,7 +54,7 @@ export async function createStore(input: CreateStoreInput) {
           username,
           phone: input.phone,
           passwordHash,
-          roleId: roleIdByName.get("Super Admin")!,
+          roleId: roleIdByName.get("Business Owner")!,
         },
       });
 
