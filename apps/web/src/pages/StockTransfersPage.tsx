@@ -3,6 +3,8 @@ import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { DateRangeFilter } from "../components/DateRangeFilter";
+import { computeDateRange, toDateInput, toMonthInput, type DateFilterValue } from "../lib/dateRangeFilter";
 
 interface Branch {
   id: string;
@@ -32,6 +34,13 @@ export function StockTransfersPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
+  const [branchFilter, setBranchFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>({
+    mode: "all",
+    day: toDateInput(new Date()),
+    month: toMonthInput(new Date()),
+    year: String(new Date().getFullYear()),
+  });
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
@@ -39,8 +48,18 @@ export function StockTransfersPage() {
   });
 
   const { data: transfers = [], isLoading } = useQuery({
-    queryKey: ["stock-transfers"],
-    queryFn: async () => (await api.get<{ data: Transfer[] }>("/stock-transfers")).data.data,
+    queryKey: ["stock-transfers", branchFilter, dateFilter],
+    queryFn: async () => {
+      const { from, to } = computeDateRange(dateFilter);
+      const res = await api.get<{ data: Transfer[] }>("/stock-transfers", {
+        params: {
+          ...(branchFilter ? { branchId: branchFilter } : {}),
+          ...(from ? { from: from.toISOString() } : {}),
+          ...(to ? { to: to.toISOString() } : {}),
+        },
+      });
+      return res.data.data;
+    },
   });
 
   const { data: batches = [] } = useQuery({
@@ -131,13 +150,25 @@ export function StockTransfersPage() {
 
   return (
     <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
+      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
         <h3 className="mb-0">Stock Transfers</h3>
         {hasPermission("stock_transfer", "add") && (
           <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
             {showForm ? "Cancel" : "New transfer"}
           </button>
         )}
+      </div>
+
+      <div className="d-flex align-items-center gap-2 flex-wrap mb-3">
+        <select className="form-select form-select-sm" style={{ width: 180 }} value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
+          <option value="">All branches</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
       </div>
 
       {error && <div className="alert alert-danger py-2">{error}</div>}

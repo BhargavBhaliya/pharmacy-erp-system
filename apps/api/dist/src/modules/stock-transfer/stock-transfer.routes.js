@@ -22,10 +22,21 @@ function assertBranchAccessible(req, branchId) {
 }
 exports.stockTransferRouter.get("/", (0, auth_1.requirePermission)("stock_transfer", "view"), async (req, res, next) => {
     try {
+        const branchId = typeof req.query.branchId === "string" ? req.query.branchId : undefined;
+        const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
+        const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
         const transfers = await prisma_1.prisma.stockTransfer.findMany({
             where: {
                 tenantId: req.user.tenantId,
-                OR: [{ fromBranchId: { in: req.user.branchIds } }, { toBranchId: { in: req.user.branchIds } }],
+                AND: [
+                    // Branch access control: always required, independent of the optional branchId filter
+                    // below — a plain object-spread would let a second "OR" key silently clobber this one.
+                    { OR: [{ fromBranchId: { in: req.user.branchIds } }, { toBranchId: { in: req.user.branchIds } }] },
+                    // Matches either side — "which branch was this transfer done in" covers a branch
+                    // sending stock out just as much as one receiving it.
+                    ...(branchId ? [{ OR: [{ fromBranchId: branchId }, { toBranchId: branchId }] }] : []),
+                    ...(from || to ? [{ createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }] : []),
+                ],
             },
             include: transferInclude,
             orderBy: { createdAt: "desc" },
