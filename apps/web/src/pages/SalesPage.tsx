@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { DateRangeFilter } from "../components/DateRangeFilter";
+import { ShareInvoiceButton } from "../components/ShareInvoiceButton";
 import { computeDateRange, toDateInput, toMonthInput, type DateFilterValue } from "../lib/dateRangeFilter";
 
 interface Sale {
@@ -25,6 +26,7 @@ export function SalesPage() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<DateFilterValue>({
     mode: "all",
     day: toDateInput(new Date()),
@@ -79,6 +81,7 @@ export function SalesPage() {
       </div>
 
       {error && <div className="alert alert-danger py-2">{error}</div>}
+      {shareNotice && <div className="alert alert-warning py-2">{shareNotice}</div>}
 
       <div className="d-flex justify-content-between align-items-center mb-2 text-muted small">
         <span>{isLoading ? "Loading..." : `${sales.length} invoice(s)`}</span>
@@ -124,6 +127,19 @@ export function SalesPage() {
                     <Link to={`/sales/${s.id}/print`} className="btn btn-sm btn-outline-secondary me-1">
                       Print
                     </Link>
+                  )}
+                  {hasPermission("sales", "print") && (
+                    <ShareInvoiceButton
+                      saleId={s.id}
+                      invoiceNumber={s.invoiceNumber}
+                      customerName={s.customer?.name ?? "there"}
+                      customerMobile={s.customer?.mobile}
+                      totalAmount={s.totalAmount}
+                      onNotice={setShareNotice}
+                      className="btn btn-sm btn-success me-1"
+                    >
+                      Share
+                    </ShareInvoiceButton>
                   )}
                   {s.status === "CONFIRMED" && hasPermission("sales", "cancel") && (
                     cancellingId === s.id ? (

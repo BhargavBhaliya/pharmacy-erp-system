@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import html2canvas from "html2canvas";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { InvoiceDocument, type InvoiceBranding, type InvoiceSaleDetail } from "../components/InvoiceDocument";
+import { type InvoiceBranding, type InvoiceSaleDetail } from "../components/InvoiceDocument";
+import { ShareInvoiceButton } from "../components/ShareInvoiceButton";
 
 interface Branch {
   id: string;
@@ -64,19 +64,6 @@ interface PaymentLine {
 const PAYMENT_MODES = ["CASH", "UPI", "CARD", "BANK_TRANSFER", "CHEQUE", "OTHER"];
 const INVOICE_TYPES = ["CASH", "CREDIT", "TAX", "RETAIL", "WHOLESALE"] as const;
 
-// wa.me needs a country-code-prefixed, digits-only number. Indian mobiles are stored as plain
-// 10-digit numbers (sometimes with a leading 0 or +91) — normalize to the 91XXXXXXXXXX shape.
-// There's no WhatsApp Business API integration here (that needs a paid, verified account), so
-// this opens WhatsApp Web/app pre-filled on whichever device the cashier is using, ready to hit
-// Send — not an automated send from the business's own number.
-function buildWhatsAppLink(mobile: string, message: string): string | null {
-  let digits = mobile.replace(/\D/g, "");
-  if (digits.length === 10) digits = `91${digits}`;
-  else if (digits.length === 11 && digits.startsWith("0")) digits = `91${digits.slice(1)}`;
-  if (digits.length < 10) return null;
-  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
-}
-
 export function POSPage() {
   const { user, hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -94,14 +81,12 @@ export function POSPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastInvoice, setLastInvoice] = useState<CompletedInvoice | null>(null);
   const [editingMobile, setEditingMobile] = useState<string | null>(null);
-  const [sharingInvoice, setSharingInvoice] = useState(false);
-  const [shareError, setShareError] = useState<string | null>(null);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
   const [pendingBatchProduct, setPendingBatchProduct] = useState<ProductLite | null>(null);
   const [batchPickerProduct, setBatchPickerProduct] = useState<ProductLite | null>(null);
   const [batchPickerOptions, setBatchPickerOptions] = useState<BatchOption[]>([]);
   const [batchFilterQuery, setBatchFilterQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
-  const invoiceCaptureRef = useRef<HTMLDivElement>(null);
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
@@ -369,7 +354,7 @@ export function POSPage() {
       const sale = res.data.data;
       setLastInvoice({ ...sale, customerId: sale.customer?.id });
       setEditingMobile(null);
-      setShareError(null);
+      setShareNotice(null);
       setCart([]);
       setPayments([]);
       setAutoPayment(true);
@@ -401,51 +386,6 @@ export function POSPage() {
       })),
       payments: payments.map((p) => ({ amount: p.amount, paymentMode: p.paymentMode })),
     });
-  }
-
-  // Renders the off-screen InvoiceDocument (with logo/signature) to a PNG and hands it to the
-  // OS share sheet via the Web Share API's file support, so the cashier can pick WhatsApp and
-  // send the actual invoice image — not just a text message. Only mobile Chrome/Safari and a
-  // handful of desktop browsers support sharing files this way; where it's missing, the image
-  // downloads instead and a WhatsApp chat opens with the customer so it can be attached by hand.
-  async function handleShareInvoiceImage() {
-    if (!lastInvoice || !invoiceCaptureRef.current) return;
-    setShareError(null);
-    setSharingInvoice(true);
-    try {
-      const canvas = await html2canvas(invoiceCaptureRef.current, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
-      const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (!blob) throw new Error("Could not render the invoice image");
-
-      const fileName = `Invoice-${lastInvoice.invoiceNumber}.png`;
-      const file = new File([blob], fileName, { type: "image/png" });
-      const message = `Hi ${lastInvoice.customer?.name ?? "there"}, thank you for shopping at ${branding?.businessName ?? ""}! Invoice ${lastInvoice.invoiceNumber}, total ₹${lastInvoice.totalAmount}.`;
-
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: fileName, text: message });
-        return;
-      }
-
-      // Fallback: download the image, then open a WhatsApp chat with the customer so the
-      // cashier can attach the just-downloaded file manually.
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-      link.click();
-      URL.revokeObjectURL(url);
-      setShareError(`"${fileName}" downloaded. Attach it in the WhatsApp chat that's about to open.`);
-      const waLink = lastInvoice.customer?.mobile && buildWhatsAppLink(lastInvoice.customer.mobile, message);
-      if (waLink) window.open(waLink, "_blank");
-    } catch (err) {
-      // A user cancelling the native share sheet also lands here (AbortError) — not a real
-      // failure, so don't show it as one.
-      if (!(err instanceof DOMException && err.name === "AbortError")) {
-        setShareError("Couldn't prepare the invoice image for sharing.");
-      }
-    } finally {
-      setSharingInvoice(false);
-    }
   }
 
   return (
@@ -850,7 +790,7 @@ export function POSPage() {
                   </div>
                 )}
 
-                {shareError && <div className="alert alert-warning py-2 small">{shareError}</div>}
+                {shareNotice && <div className="alert alert-warning py-2 small">{shareNotice}</div>}
 
                 <div className="d-grid gap-2">
                   <button
@@ -860,11 +800,15 @@ export function POSPage() {
                   >
                     🖨️ Print invoice
                   </button>
-                  {lastInvoice.customer?.mobile && branding?.whatsappNumber && (
-                    <button className="btn btn-success" type="button" disabled={sharingInvoice} onClick={handleShareInvoiceImage}>
-                      {sharingInvoice ? "Preparing image..." : "💬 Share on WhatsApp"}
-                    </button>
-                  )}
+                  <ShareInvoiceButton
+                    saleId={lastInvoice.id}
+                    sale={lastInvoice}
+                    invoiceNumber={lastInvoice.invoiceNumber}
+                    customerName={lastInvoice.customer?.name ?? "there"}
+                    customerMobile={lastInvoice.customer?.mobile}
+                    totalAmount={lastInvoice.totalAmount}
+                    onNotice={setShareNotice}
+                  />
                   {lastInvoice.customer?.mobile && !branding?.whatsappNumber && (
                     <div className="text-muted small text-center">
                       Set a WhatsApp number in Settings to enable sharing invoices.
@@ -873,17 +817,6 @@ export function POSPage() {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Off-screen render used only to capture a shareable invoice image (see
-          handleShareInvoiceImage) — never visible, but must be actually laid out in the DOM for
-          html2canvas to read it, so this can't be display:none. */}
-      {lastInvoice && branding && (
-        <div style={{ position: "fixed", top: 0, left: -10_000, width: 850, background: "#fff" }}>
-          <div ref={invoiceCaptureRef} className="p-4">
-            <InvoiceDocument sale={lastInvoice} branding={branding} forImageCapture />
           </div>
         </div>
       )}
