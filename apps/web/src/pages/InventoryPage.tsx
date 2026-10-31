@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { memo, useEffect, useMemo, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
@@ -84,17 +84,28 @@ export function InventoryPage() {
   const batches = batchesQuery.data ?? [];
   const loading = stockQuery.isLoading || batchesQuery.isLoading;
 
-  const filteredProducts = products.filter((p) => {
+  // Keep the already-selected product/batch in the option list even once it no longer matches
+  // the search text — otherwise narrowing the search after picking one snaps the <select> back
+  // to blank, which looks like the click never registered.
+  const filteredProducts = useMemo(() => {
     const q = productSearch.trim().toLowerCase();
-    if (!q) return true;
-    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
-  });
+    const matches = products.filter((p) => !q || p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
+    if (batchForm.productId && !matches.some((p) => p.id === batchForm.productId)) {
+      const selected = products.find((p) => p.id === batchForm.productId);
+      if (selected) return [selected, ...matches];
+    }
+    return matches;
+  }, [products, productSearch, batchForm.productId]);
 
-  const filteredBatches = batches.filter((b) => {
+  const filteredBatches = useMemo(() => {
     const q = batchSearch.trim().toLowerCase();
-    if (!q) return true;
-    return b.product.name.toLowerCase().includes(q) || b.batchNumber.toLowerCase().includes(q);
-  });
+    const matches = batches.filter((b) => !q || b.product.name.toLowerCase().includes(q) || b.batchNumber.toLowerCase().includes(q));
+    if (adjustForm?.batchId && !matches.some((b) => b.id === adjustForm.batchId)) {
+      const selected = batches.find((b) => b.id === adjustForm.batchId);
+      if (selected) return [selected, ...matches];
+    }
+    return matches;
+  }, [batches, batchSearch, adjustForm?.batchId]);
 
   function invalidateInventory() {
     queryClient.invalidateQueries({ queryKey: ["inventory", "stock"] });
@@ -262,54 +273,72 @@ export function InventoryPage() {
         </form>
       )}
 
-      <div className="card">
-        <table className="table mb-0">
-          <thead>
-            <tr>
-              <th>SKU</th>
-              <th>Product</th>
-              <th>Available</th>
-              <th>Expired</th>
-              <th>Reorder level</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={7} className="text-center text-muted py-4">
-                  Loading...
-                </td>
-              </tr>
-            )}
-            {!loading && stock.length === 0 && (
-              <tr>
-                <td colSpan={7} className="text-center text-muted py-4">
-                  No stock recorded for this branch yet.
-                </td>
-              </tr>
-            )}
-            {stock.map((row) => (
-              <tr key={`${row.productId}-${row.branchId}`}>
-                <td>{row.sku}</td>
-                <td>{row.productName}</td>
-                <td>{row.availableQuantity}</td>
-                <td>{row.expiredQuantity > 0 ? <span className="text-danger">{row.expiredQuantity}</span> : 0}</td>
-                <td>{row.reorderLevel}</td>
-                <td>{row.isLowStock && <span className="badge text-bg-warning">Low stock</span>}</td>
-                <td className="text-end">
-                  {hasPermission("inventory", "stock_adjustment") && (
-                    <button className="btn btn-sm btn-outline-secondary" onClick={() => setAdjustForm({ ...emptyAdjustForm, batchId: "" })}>
-                      Adjust
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <StockTable stock={stock} loading={loading} canAdjust={hasPermission("inventory", "stock_adjustment")} onAdjust={() => setAdjustForm({ ...emptyAdjustForm, batchId: "" })} />
     </div>
   );
 }
+
+// Memoized so typing in the search boxes above (which re-renders InventoryPage on every
+// keystroke) doesn't also re-render the whole stock table.
+const StockTable = memo(function StockTable({
+  stock,
+  loading,
+  canAdjust,
+  onAdjust,
+}: {
+  stock: StockRow[];
+  loading: boolean;
+  canAdjust: boolean;
+  onAdjust: () => void;
+}) {
+  return (
+    <div className="card">
+      <table className="table mb-0">
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Product</th>
+            <th>Available</th>
+            <th>Expired</th>
+            <th>Reorder level</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading && (
+            <tr>
+              <td colSpan={7} className="text-center text-muted py-4">
+                Loading...
+              </td>
+            </tr>
+          )}
+          {!loading && stock.length === 0 && (
+            <tr>
+              <td colSpan={7} className="text-center text-muted py-4">
+                No stock recorded for this branch yet.
+              </td>
+            </tr>
+          )}
+          {stock.map((row) => (
+            <tr key={`${row.productId}-${row.branchId}`}>
+              <td>{row.sku}</td>
+              <td>{row.productName}</td>
+              <td>{row.availableQuantity}</td>
+              <td>{row.expiredQuantity > 0 ? <span className="text-danger">{row.expiredQuantity}</span> : 0}</td>
+              <td>{row.reorderLevel}</td>
+              <td>{row.isLowStock && <span className="badge text-bg-warning">Low stock</span>}</td>
+              <td className="text-end">
+                {canAdjust && (
+                  <button className="btn btn-sm btn-outline-secondary" onClick={onAdjust}>
+                    Adjust
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+});
