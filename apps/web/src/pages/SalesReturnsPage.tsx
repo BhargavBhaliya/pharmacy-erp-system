@@ -3,6 +3,8 @@ import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { DateRangeFilter } from "../components/DateRangeFilter";
+import { computeDateRange, toDateInput, toMonthInput, type DateFilterValue } from "../lib/dateRangeFilter";
 
 interface Sale {
   id: string;
@@ -48,6 +50,12 @@ export function SalesReturnsPage() {
   const [reason, setReason] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>({
+    mode: "all",
+    day: toDateInput(new Date()),
+    month: toMonthInput(new Date()),
+    year: String(new Date().getFullYear()),
+  });
 
   const { data: sales = [] } = useQuery({
     queryKey: ["sales"],
@@ -55,8 +63,14 @@ export function SalesReturnsPage() {
   });
 
   const { data: returns = [], isLoading } = useQuery({
-    queryKey: ["sales-returns"],
-    queryFn: async () => (await api.get<{ data: ReturnRow[] }>("/sales-returns")).data.data,
+    queryKey: ["sales-returns", dateFilter],
+    queryFn: async () => {
+      const { from, to } = computeDateRange(dateFilter);
+      const res = await api.get<{ data: ReturnRow[] }>("/sales-returns", {
+        params: { ...(from ? { from: from.toISOString() } : {}), ...(to ? { to: to.toISOString() } : {}) },
+      });
+      return res.data.data;
+    },
   });
 
   const { data: saleItems = NO_ITEMS } = useQuery({
@@ -152,13 +166,16 @@ export function SalesReturnsPage() {
 
   return (
     <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
+      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
         <h3 className="mb-0">Sales Returns</h3>
-        {hasPermission("sales_return", "add") && (
-          <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
-            {showForm ? "Cancel" : "New return"}
-          </button>
-        )}
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          {hasPermission("sales_return", "add") && (
+            <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
+              {showForm ? "Cancel" : "New return"}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <div className="alert alert-danger py-2">{error}</div>}
@@ -261,13 +278,14 @@ export function SalesReturnsPage() {
               <th>Items</th>
               <th>Total</th>
               <th>Status</th>
+              <th>Date</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={6} className="text-center text-muted py-4">
+                <td colSpan={7} className="text-center text-muted py-4">
                   Loading...
                 </td>
               </tr>
@@ -285,6 +303,7 @@ export function SalesReturnsPage() {
                 </td>
                 <td>₹{r.totalAmount}</td>
                 <td>{statusBadge(r.status)}</td>
+                <td>{new Date(r.createdAt).toLocaleDateString()}</td>
                 <td className="text-end">
                   {r.status === "PENDING" && hasPermission("sales_return", "approve") && (
                     <div className="btn-group">

@@ -25,8 +25,14 @@ function assertBranchAccessible(req, branchId) {
 }
 exports.salesReturnRouter.get("/", (0, auth_1.requirePermission)("sales_return", "view"), async (req, res, next) => {
     try {
+        const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
+        const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
         const returns = await prisma_1.prisma.salesReturn.findMany({
-            where: { tenantId: req.user.tenantId, branchId: { in: req.user.branchIds } },
+            where: {
+                tenantId: req.user.tenantId,
+                branchId: { in: req.user.branchIds },
+                ...(from || to ? { returnDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+            },
             include: returnInclude,
             orderBy: { createdAt: "desc" },
             take: 200,
