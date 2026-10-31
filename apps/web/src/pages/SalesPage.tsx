@@ -4,6 +4,8 @@ import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { DateRangeFilter } from "../components/DateRangeFilter";
+import { computeDateRange, toDateInput, toMonthInput, type DateFilterValue } from "../lib/dateRangeFilter";
 
 interface Sale {
   id: string;
@@ -17,57 +19,23 @@ interface Sale {
   createdAt: string;
 }
 
-type FilterMode = "all" | "today" | "yesterday" | "day" | "month";
-
-function pad(n: number) {
-  return String(n).padStart(2, "0");
-}
-function toDateInput(d: Date) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-function toMonthInput(d: Date) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-}
-function startOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
-}
-function endOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-}
-
 export function SalesPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [filterMode, setFilterMode] = useState<FilterMode>("all");
-  const [dayValue, setDayValue] = useState(toDateInput(new Date()));
-  const [monthValue, setMonthValue] = useState(toMonthInput(new Date()));
-
-  function computeRange(): { from?: Date; to?: Date } {
-    const now = new Date();
-    if (filterMode === "today") return { from: startOfDay(now), to: endOfDay(now) };
-    if (filterMode === "yesterday") {
-      const y = new Date(now);
-      y.setDate(y.getDate() - 1);
-      return { from: startOfDay(y), to: endOfDay(y) };
-    }
-    if (filterMode === "day" && dayValue) {
-      const d = new Date(`${dayValue}T00:00:00`);
-      return { from: startOfDay(d), to: endOfDay(d) };
-    }
-    if (filterMode === "month" && monthValue) {
-      const [y, m] = monthValue.split("-").map(Number);
-      return { from: new Date(y, m - 1, 1, 0, 0, 0, 0), to: new Date(y, m, 0, 23, 59, 59, 999) };
-    }
-    return {};
-  }
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>({
+    mode: "all",
+    day: toDateInput(new Date()),
+    month: toMonthInput(new Date()),
+    year: String(new Date().getFullYear()),
+  });
 
   const { data: sales = [], isLoading } = useQuery({
-    queryKey: ["sales", filterMode, dayValue, monthValue],
+    queryKey: ["sales", dateFilter],
     queryFn: async () => {
-      const { from, to } = computeRange();
+      const { from, to } = computeDateRange(dateFilter);
       const res = await api.get<{ data: Sale[] }>("/sales", {
         params: { ...(from ? { from: from.toISOString() } : {}), ...(to ? { to: to.toISOString() } : {}) },
       });
@@ -107,40 +75,7 @@ export function SalesPage() {
     <div>
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <h3 className="mb-0">Sales</h3>
-        <div className="d-flex align-items-center gap-2 flex-wrap">
-          <div className="btn-group" role="group">
-            {(["all", "today", "yesterday"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                className={`btn btn-sm ${filterMode === m ? "btn-primary" : "btn-outline-primary"}`}
-                onClick={() => setFilterMode(m)}
-              >
-                {m === "all" ? "All" : m === "today" ? "Today" : "Yesterday"}
-              </button>
-            ))}
-          </div>
-          <input
-            type="date"
-            className={`form-control form-control-sm ${filterMode === "day" ? "border-primary" : ""}`}
-            style={{ width: 150 }}
-            value={dayValue}
-            onChange={(e) => {
-              setDayValue(e.target.value);
-              setFilterMode("day");
-            }}
-          />
-          <input
-            type="month"
-            className={`form-control form-control-sm ${filterMode === "month" ? "border-primary" : ""}`}
-            style={{ width: 140 }}
-            value={monthValue}
-            onChange={(e) => {
-              setMonthValue(e.target.value);
-              setFilterMode("month");
-            }}
-          />
-        </div>
+        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
       </div>
 
       {error && <div className="alert alert-danger py-2">{error}</div>}

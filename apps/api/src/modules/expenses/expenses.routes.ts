@@ -42,8 +42,14 @@ const expenseInclude = {
 
 expensesRouter.get("/", requirePermission("expenses", "view"), async (req, res, next) => {
   try {
+    const from = typeof req.query.from === "string" ? new Date(req.query.from) : undefined;
+    const to = typeof req.query.to === "string" ? new Date(req.query.to) : undefined;
     const expenses = await prisma.expense.findMany({
-      where: { tenantId: req.user!.tenantId, branchId: { in: req.user!.branchIds } },
+      where: {
+        tenantId: req.user!.tenantId,
+        branchId: { in: req.user!.branchIds },
+        ...(from || to ? { expenseDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+      },
       include: expenseInclude,
       orderBy: { createdAt: "desc" },
       take: 200,

@@ -3,6 +3,8 @@ import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { DateRangeFilter } from "../components/DateRangeFilter";
+import { computeDateRange, toDateInput, toMonthInput, type DateFilterValue } from "../lib/dateRangeFilter";
 
 interface Branch {
   id: string;
@@ -20,7 +22,7 @@ interface Expense {
   description?: string | null;
   category: { name: string };
   branch: { name: string };
-  createdAt: string;
+  expenseDate: string;
 }
 
 const emptyForm = { branchId: "", categoryId: "", amount: 0, paymentMode: "CASH", description: "" };
@@ -32,6 +34,12 @@ export function ExpensesPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>({
+    mode: "all",
+    day: toDateInput(new Date()),
+    month: toMonthInput(new Date()),
+    year: String(new Date().getFullYear()),
+  });
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
@@ -44,8 +52,14 @@ export function ExpensesPage() {
   });
 
   const { data: expenses = [], isLoading } = useQuery({
-    queryKey: ["expenses"],
-    queryFn: async () => (await api.get<{ data: Expense[] }>("/expenses")).data.data,
+    queryKey: ["expenses", dateFilter],
+    queryFn: async () => {
+      const { from, to } = computeDateRange(dateFilter);
+      const res = await api.get<{ data: Expense[] }>("/expenses", {
+        params: { ...(from ? { from: from.toISOString() } : {}), ...(to ? { to: to.toISOString() } : {}) },
+      });
+      return res.data.data;
+    },
   });
 
   const addCategoryMutation = useMutation({
@@ -96,15 +110,22 @@ export function ExpensesPage() {
     return <span className={`badge ${map[status] ?? "text-bg-secondary"}`}>{status}</span>;
   };
 
+  // Rejected expenses never actually cost anything, so they're left out of the total — same
+  // treatment as cancelled sales on the Sales page.
+  const totalAmount = expenses.filter((e) => e.status !== "REJECTED").reduce((sum, e) => sum + Number(e.amount), 0);
+
   return (
     <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
+      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <h3 className="mb-0">Expenses</h3>
-        {hasPermission("expenses", "add") && (
-          <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
-            {showForm ? "Cancel" : "Record expense"}
-          </button>
-        )}
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          {hasPermission("expenses", "add") && (
+            <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
+              {showForm ? "Cancel" : "Record expense"}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <div className="alert alert-danger py-2">{error}</div>}
@@ -166,6 +187,11 @@ export function ExpensesPage() {
         </form>
       )}
 
+      <div className="d-flex justify-content-between align-items-center mb-2 text-muted small">
+        <span>{isLoading ? "Loading..." : `${expenses.length} expense(s)`}</span>
+        <span className="fw-semibold fs-6 text-dark">Total: ₹{totalAmount.toFixed(2)}</span>
+      </div>
+
       <div className="card">
         <table className="table mb-0">
           <thead>
@@ -197,7 +223,7 @@ export function ExpensesPage() {
                 <td>₹{e.amount}</td>
                 <td>{e.paymentMode}</td>
                 <td>{statusBadge(e.status)}</td>
-                <td>{new Date(e.createdAt).toLocaleDateString()}</td>
+                <td>{new Date(e.expenseDate).toLocaleDateString()}</td>
                 <td className="text-end">
                   {e.status === "PENDING" && hasPermission("expenses", "approve") && (
                     <div className="btn-group">
