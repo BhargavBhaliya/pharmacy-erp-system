@@ -45,6 +45,13 @@ export function SalesPage() {
     },
   });
 
+  // Same query key ShareInvoiceButton itself uses, so this is a cache hit, not an extra request
+  // — only here to explain why the Share button is missing instead of it just not being there.
+  const { data: branding } = useQuery({
+    queryKey: ["settings", "branding"],
+    queryFn: async () => (await api.get("/settings/branding")).data.data as { whatsappNumber?: string | null },
+  });
+
   const cancelMutation = useMutation({
     mutationFn: ({ id, cancelReason }: { id: string; cancelReason: string }) =>
       api.put(`/sales/${id}/cancel`, { cancelReason }),
@@ -82,6 +89,11 @@ export function SalesPage() {
 
       {error && <div className="alert alert-danger py-2">{error}</div>}
       {shareNotice && <div className="alert alert-warning py-2">{shareNotice}</div>}
+      {hasPermission("sales", "print") && branding && !branding.whatsappNumber && (
+        <div className="alert alert-info py-2">
+          No "Share" button on invoices yet — set a WhatsApp number in <Link to="/settings">Settings</Link> to turn it on.
+        </div>
+      )}
 
       <div className="d-flex justify-content-between align-items-center mb-2 text-muted small">
         <span>{isLoading ? "Loading..." : `${sales.length} invoice(s)`}</span>
