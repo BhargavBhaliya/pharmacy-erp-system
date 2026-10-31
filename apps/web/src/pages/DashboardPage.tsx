@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { api } from "../api/client";
 
@@ -26,6 +27,8 @@ export function DashboardPage() {
   const canViewExpiry = hasPermission("expiry", "view");
   const canViewSales = hasPermission("sales", "view");
   const canViewPurchase = hasPermission("purchase", "view");
+  const canViewCustomers = hasPermission("customers", "view");
+  const canViewSuppliers = hasPermission("suppliers", "view");
 
   const lowStockQuery = useQuery({
     queryKey: ["dashboard", "low-stock"],
@@ -74,13 +77,13 @@ export function DashboardPage() {
   const money = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `₹${v.toFixed(2)}`);
 
   const cards = [
-    { label: "Sales Today", value: money(salesQuery.data?.salesToday), variant: "success" },
-    { label: "Purchases Today", value: money(purchaseQuery.data?.purchaseToday), variant: "primary" },
-    { label: "Receivables (Customers Owe)", value: money(salesQuery.data?.receivables), variant: "warning" },
-    { label: "Payables (Owed to Suppliers)", value: money(purchaseQuery.data?.payables), variant: "warning" },
-    { label: "Low Stock Products", value: lowStockQuery.data ?? "—", variant: "warning" },
-    { label: "Near Expiry Batches", value: expiryQuery.data?.nearExpiryCount ?? "—", variant: "warning" },
-    { label: "Expired Batches", value: expiryQuery.data?.expiredCount ?? "—", variant: "danger" },
+    { label: "Sales Today", value: money(salesQuery.data?.salesToday), variant: "success", to: canViewSales ? "/sales" : undefined },
+    { label: "Purchases Today", value: money(purchaseQuery.data?.purchaseToday), variant: "primary", to: canViewPurchase ? "/purchases" : undefined },
+    { label: "Receivables (Customers Owe)", value: money(salesQuery.data?.receivables), variant: "warning", to: canViewCustomers ? "/customers" : undefined },
+    { label: "Payables (Owed to Suppliers)", value: money(purchaseQuery.data?.payables), variant: "warning", to: canViewSuppliers ? "/suppliers" : undefined },
+    { label: "Low Stock Products", value: lowStockQuery.data ?? "—", variant: "warning", to: canViewInventory ? "/reorder-suggestions" : undefined },
+    { label: "Near Expiry Batches", value: expiryQuery.data?.nearExpiryCount ?? "—", variant: "warning", to: canViewExpiry ? "/expiry" : undefined },
+    { label: "Expired Batches", value: expiryQuery.data?.expiredCount ?? "—", variant: "danger", to: canViewExpiry ? "/expiry" : undefined },
   ];
 
   return (
@@ -91,16 +94,27 @@ export function DashboardPage() {
         accounting reports (with date-range filters) land in a later phase.
       </div>
       <div className="row g-3">
-        {cards.map((c) => (
-          <div key={c.label} className="col-md-4 col-lg-3">
-            <div className="card shadow-sm">
+        {cards.map((c) => {
+          const body = (
+            <div className={`card shadow-sm h-100 ${c.to ? "dashboard-card-link" : ""}`}>
               <div className="card-body">
                 <div className="text-muted small">{c.label}</div>
                 <div className={`fs-5 fw-semibold text-${c.variant}`}>{c.value}</div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+          return (
+            <div key={c.label} className="col-md-4 col-lg-3">
+              {c.to ? (
+                <Link to={c.to} className="text-decoration-none text-reset d-block h-100">
+                  {body}
+                </Link>
+              ) : (
+                body
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

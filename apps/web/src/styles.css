@@ -1,3 +1,12 @@
+.dashboard-card-link {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease-in-out, transform 0.15s ease-in-out;
+}
+.dashboard-card-link:hover {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+  transform: translateY(-2px);
+}
+
 @media print {
   .no-print,
   nav {
