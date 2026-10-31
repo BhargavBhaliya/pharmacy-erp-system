@@ -8,6 +8,7 @@ export const updateBusinessProfileSchema = z.object({
   website: z.string().optional(),
   gstin: z.string().optional(),
   pan: z.string().optional(),
+  whatsappNumber: z.string().optional(),
   drugLicenseNumber: z.string().optional(),
   fssaiLicenseNumber: z.string().optional(),
   address: z.string().optional(),

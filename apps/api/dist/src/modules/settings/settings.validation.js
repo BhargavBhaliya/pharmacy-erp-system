@@ -10,6 +10,7 @@ exports.updateBusinessProfileSchema = zod_1.z.object({
     website: zod_1.z.string().optional(),
     gstin: zod_1.z.string().optional(),
     pan: zod_1.z.string().optional(),
+    whatsappNumber: zod_1.z.string().optional(),
     drugLicenseNumber: zod_1.z.string().optional(),
     fssaiLicenseNumber: zod_1.z.string().optional(),
     address: zod_1.z.string().optional(),

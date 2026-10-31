@@ -26,6 +26,7 @@ exports.settingsRouter.get("/branding", async (req, res, next) => {
                 businessName: true,
                 legalName: true,
                 gstin: true,
+                whatsappNumber: true,
                 drugLicenseNumber: true,
                 fssaiLicenseNumber: true,
                 address: true,

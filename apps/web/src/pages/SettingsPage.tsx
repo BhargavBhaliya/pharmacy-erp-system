@@ -9,6 +9,7 @@ interface BusinessProfile {
   legalName?: string | null;
   gstin?: string | null;
   pan?: string | null;
+  whatsappNumber?: string | null;
   drugLicenseNumber?: string | null;
   fssaiLicenseNumber?: string | null;
   address?: string | null;
@@ -135,6 +136,16 @@ export function SettingsPage() {
             <div className="col-md-4">
               <label className="form-label">PAN</label>
               <input className="form-control" value={profile.pan ?? ""} onChange={(e) => setProfile({ ...profile, pan: e.target.value })} />
+            </div>
+            <div className="col-md-4">
+              <label className="form-label">WhatsApp number</label>
+              <input
+                className="form-control"
+                placeholder="+91XXXXXXXXXX"
+                value={profile.whatsappNumber ?? ""}
+                onChange={(e) => setProfile({ ...profile, whatsappNumber: e.target.value })}
+              />
+              <div className="form-text">Shown on invoices and required to enable "Share on WhatsApp" at checkout.</div>
             </div>
             <div className="col-md-4">
               <label className="form-label">Drug license number</label>

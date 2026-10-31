@@ -24,6 +24,9 @@ model Tenant {
   website                 String?
   gstin                   String?
   pan                     String?
+  // Business's own WhatsApp-enabled number, shared on printed invoices and used to gate the
+  // "Share on WhatsApp" button on the POS checkout popup — set once in Settings.
+  whatsappNumber          String?
   drugLicenseNumber       String?
   fssaiLicenseNumber      String?
   address                 String?

@@ -7,6 +7,7 @@ interface Branding {
   businessName: string;
   legalName?: string | null;
   gstin?: string | null;
+  whatsappNumber?: string | null;
   drugLicenseNumber?: string | null;
   fssaiLicenseNumber?: string | null;
   address?: string | null;
@@ -103,6 +104,7 @@ export function SaleInvoicePrintPage() {
                 {sale.branch.name}
                 {sale.branch.contactNumber ? ` · ${sale.branch.contactNumber}` : ""}
               </div>
+              {branding.whatsappNumber && <div className="small text-muted">WhatsApp: {branding.whatsappNumber}</div>}
             </div>
           </div>
           <div className="text-end small">

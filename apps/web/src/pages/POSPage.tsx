@@ -27,6 +27,18 @@ interface CustomerDetail extends Customer {
   creditDays: number;
   outstandingBalance: number;
 }
+interface Branding {
+  businessName: string;
+  whatsappNumber?: string | null;
+}
+interface CompletedInvoice {
+  id: string;
+  invoiceNumber: string;
+  totalAmount: string;
+  customerId?: string;
+  customerName: string;
+  customerMobile?: string | null;
+}
 interface BatchOption {
   id: string;
   batchNumber: string;
@@ -57,6 +69,19 @@ interface PaymentLine {
 const PAYMENT_MODES = ["CASH", "UPI", "CARD", "BANK_TRANSFER", "CHEQUE", "OTHER"];
 const INVOICE_TYPES = ["CASH", "CREDIT", "TAX", "RETAIL", "WHOLESALE"] as const;
 
+// wa.me needs a country-code-prefixed, digits-only number. Indian mobiles are stored as plain
+// 10-digit numbers (sometimes with a leading 0 or +91) — normalize to the 91XXXXXXXXXX shape.
+// There's no WhatsApp Business API integration here (that needs a paid, verified account), so
+// this opens WhatsApp Web/app pre-filled on whichever device the cashier is using, ready to hit
+// Send — not an automated send from the business's own number.
+function buildWhatsAppLink(mobile: string, message: string): string | null {
+  let digits = mobile.replace(/\D/g, "");
+  if (digits.length === 10) digits = `91${digits}`;
+  else if (digits.length === 11 && digits.startsWith("0")) digits = `91${digits.slice(1)}`;
+  if (digits.length < 10) return null;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
+
 export function POSPage() {
   const { user, hasPermission } = useAuth();
   const queryClient = useQueryClient();
@@ -72,7 +97,8 @@ export function POSPage() {
   const [payments, setPayments] = useState<PaymentLine[]>([]);
   const [autoPayment, setAutoPayment] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastInvoice, setLastInvoice] = useState<{ invoiceNumber: string; totalAmount: string } | null>(null);
+  const [lastInvoice, setLastInvoice] = useState<CompletedInvoice | null>(null);
+  const [editingMobile, setEditingMobile] = useState<string | null>(null);
   const [pendingBatchProduct, setPendingBatchProduct] = useState<ProductLite | null>(null);
   const [batchPickerProduct, setBatchPickerProduct] = useState<ProductLite | null>(null);
   const [batchPickerOptions, setBatchPickerOptions] = useState<BatchOption[]>([]);
@@ -82,6 +108,11 @@ export function POSPage() {
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
     queryFn: async () => (await api.get<{ data: Branch[] }>("/branches")).data.data,
+  });
+
+  const { data: branding } = useQuery({
+    queryKey: ["settings", "branding"],
+    queryFn: async () => (await api.get<{ data: Branding }>("/settings/branding")).data.data,
   });
 
   // Default to the first branch once the list arrives, but only if the cashier hasn't
@@ -139,6 +170,28 @@ export function POSPage() {
     const name = customerQuery.trim();
     if (!name || !newCustomerMobile.trim()) return;
     createCustomerMutation.mutate({ name, mobile: newCustomerMobile.trim() || undefined });
+  }
+
+  // Lets a cashier fill in a phone number for an already-existing customer who doesn't have one
+  // on file yet, right from the billing screen (or from the just-completed-sale popup) — needed
+  // for WhatsApp invoice sharing to work.
+  const updateCustomerMobileMutation = useMutation({
+    mutationFn: ({ id, mobile }: { id: string; mobile: string }) => api.put(`/customers/${id}`, { mobile }),
+    onSuccess: (_res, { id, mobile }) => {
+      queryClient.invalidateQueries({ queryKey: ["customer", id] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      setLastInvoice((prev) => (prev && prev.customerId === id ? { ...prev, customerMobile: mobile } : prev));
+      setEditingMobile(null);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(isAxiosError(err) ? err.response?.data?.error?.message : "Failed to save phone number");
+    },
+  });
+
+  function saveCustomerMobile(id: string) {
+    if (!id || !editingMobile?.trim()) return;
+    updateCustomerMobileMutation.mutate({ id, mobile: editingMobile.trim() });
   }
 
   useEffect(() => {
@@ -310,9 +363,20 @@ export function POSPage() {
       invoiceType: typeof invoiceType;
       items: { productId: string; batchId?: string; quantity: number; sellingPrice: number; discountPercent: number }[];
       payments: { amount: number; paymentMode: string }[];
-    }) => api.post("/sales", payload),
+    }) => api.post<{
+      data: { id: string; invoiceNumber: string; totalAmount: string; customer?: { id: string; name: string; mobile?: string | null } | null };
+    }>("/sales", payload),
     onSuccess: (res) => {
-      setLastInvoice({ invoiceNumber: res.data.data.invoiceNumber, totalAmount: res.data.data.totalAmount });
+      const sale = res.data.data;
+      setLastInvoice({
+        id: sale.id,
+        invoiceNumber: sale.invoiceNumber,
+        totalAmount: sale.totalAmount,
+        customerId: sale.customer?.id,
+        customerName: sale.customer?.name ?? "Walk-in customer",
+        customerMobile: sale.customer?.mobile,
+      });
+      setEditingMobile(null);
       setCart([]);
       setPayments([]);
       setAutoPayment(true);
@@ -359,14 +423,6 @@ export function POSPage() {
         </select>
       </div>
 
-      {lastInvoice && (
-        <div className="alert alert-success d-flex justify-content-between align-items-center">
-          <span>
-            Invoice <strong>{lastInvoice.invoiceNumber}</strong> created — total ₹{lastInvoice.totalAmount}
-          </span>
-          <button className="btn-close" onClick={() => setLastInvoice(null)}></button>
-        </div>
-      )}
       {error && <div className="alert alert-danger py-2">{error}</div>}
 
       <div className="row g-3">
@@ -495,7 +551,33 @@ export function POSPage() {
                 <div className="d-flex justify-content-between align-items-start">
                   <div>
                     <div className="fw-semibold">{customerDetail.name}</div>
-                    {customerDetail.mobile && <div className="small">📞 {customerDetail.mobile}</div>}
+                    {customerDetail.mobile ? (
+                      <div className="small">📞 {customerDetail.mobile}</div>
+                    ) : hasPermission("customers", "edit") ? (
+                      editingMobile !== null ? (
+                        <div className="d-flex gap-1 mt-1">
+                          <input
+                            className="form-control form-control-sm"
+                            placeholder="Mobile number"
+                            value={editingMobile}
+                            onChange={(e) => setEditingMobile(e.target.value)}
+                            autoFocus
+                          />
+                          <button
+                            className="btn btn-sm btn-primary"
+                            type="button"
+                            disabled={!editingMobile.trim() || updateCustomerMobileMutation.isPending}
+                            onClick={() => saveCustomerMobile(customerId)}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      ) : (
+                        <button className="btn btn-sm btn-link p-0 small" type="button" onClick={() => setEditingMobile("")}>
+                          + Add phone number
+                        </button>
+                      )
+                    ) : null}
                     {customerDetail.address && <div className="small text-muted">{customerDetail.address}</div>}
                   </div>
                   <button className="btn btn-sm btn-link p-0" type="button" onClick={clearCustomer}>
@@ -685,6 +767,76 @@ export function POSPage() {
                       <span>₹{b.mrp}</span>
                     </button>
                   ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lastInvoice && (
+        <div className="modal d-block" tabIndex={-1} style={{ background: "rgba(0,0,0,0.5)" }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Sale complete</h5>
+                <button type="button" className="btn-close" onClick={() => setLastInvoice(null)}></button>
+              </div>
+              <div className="modal-body">
+                <div className="fs-5">
+                  Invoice <strong>{lastInvoice.invoiceNumber}</strong>
+                </div>
+                <div className="text-muted mb-2">{lastInvoice.customerName}</div>
+                <div className="fs-4 fw-semibold mb-3">₹{lastInvoice.totalAmount}</div>
+
+                {lastInvoice.customerId && !lastInvoice.customerMobile && hasPermission("customers", "edit") && (
+                  <div className="border rounded p-2 mb-3">
+                    <div className="small text-muted mb-1">No phone number on file — add one to share this invoice on WhatsApp:</div>
+                    <div className="d-flex gap-1">
+                      <input
+                        className="form-control form-control-sm"
+                        placeholder="Mobile number"
+                        value={editingMobile ?? ""}
+                        onChange={(e) => setEditingMobile(e.target.value)}
+                      />
+                      <button
+                        className="btn btn-sm btn-primary"
+                        type="button"
+                        disabled={!editingMobile?.trim() || updateCustomerMobileMutation.isPending}
+                        onClick={() => lastInvoice.customerId && saveCustomerMobile(lastInvoice.customerId)}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="d-grid gap-2">
+                  <button
+                    className="btn btn-outline-secondary"
+                    type="button"
+                    onClick={() => window.open(`/sales/${lastInvoice.id}/print`, "_blank")}
+                  >
+                    🖨️ Print invoice
+                  </button>
+                  {lastInvoice.customerMobile && branding?.whatsappNumber && (
+                    <button
+                      className="btn btn-success"
+                      type="button"
+                      onClick={() => {
+                        const message = `Hi ${lastInvoice.customerName}, thank you for shopping at ${branding.businessName}! Your invoice ${lastInvoice.invoiceNumber} total is ₹${lastInvoice.totalAmount}.`;
+                        const link = buildWhatsAppLink(lastInvoice.customerMobile!, message);
+                        if (link) window.open(link, "_blank");
+                      }}
+                    >
+                      💬 Share on WhatsApp
+                    </button>
+                  )}
+                  {lastInvoice.customerMobile && !branding?.whatsappNumber && (
+                    <div className="text-muted small text-center">
+                      Set a WhatsApp number in Settings to enable sharing invoices.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
