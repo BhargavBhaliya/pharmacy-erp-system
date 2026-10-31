@@ -3,6 +3,8 @@ import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { DateRangeFilter } from "../components/DateRangeFilter";
+import { computeDateRange, toDateInput, toMonthInput, type DateFilterValue } from "../lib/dateRangeFilter";
 
 interface Branch {
   id: string;
@@ -37,6 +39,12 @@ export function PaymentsPage() {
   const [form, setForm] = useState({ branchId: "", partyId: "", purchaseId: "", amount: 0, paymentMode: "CASH" });
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>({
+    mode: "all",
+    day: toDateInput(new Date()),
+    month: toMonthInput(new Date()),
+    year: String(new Date().getFullYear()),
+  });
 
   const { data: branches = [] } = useQuery({
     queryKey: ["branches"],
@@ -58,8 +66,14 @@ export function PaymentsPage() {
   const outstandingPurchases = purchases.filter((p) => p.supplierId === form.partyId && p.paymentStatus !== "PAID");
 
   const { data: supplierPayments = [] } = useQuery({
-    queryKey: ["supplier-payments"],
-    queryFn: async () => (await api.get<{ data: SupplierPayment[] }>("/supplier-payments")).data.data,
+    queryKey: ["supplier-payments", dateFilter],
+    queryFn: async () => {
+      const { from, to } = computeDateRange(dateFilter);
+      const res = await api.get<{ data: SupplierPayment[] }>("/supplier-payments", {
+        params: { ...(from ? { from: from.toISOString() } : {}), ...(to ? { to: to.toISOString() } : {}) },
+      });
+      return res.data.data;
+    },
   });
 
   const createMutation = useMutation({
@@ -94,7 +108,10 @@ export function PaymentsPage() {
 
   return (
     <div>
-      <h3 className="mb-4">Supplier Payments</h3>
+      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <h3 className="mb-0">Supplier Payments</h3>
+        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+      </div>
 
       {error && <div className="alert alert-danger py-2">{error}</div>}
       {info && <div className="alert alert-info py-2">{info}</div>}
